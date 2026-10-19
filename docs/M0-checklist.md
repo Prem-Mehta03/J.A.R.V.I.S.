@@ -5,7 +5,7 @@ Goal: prove the risky pieces work before building anything. Do the steps in orde
 ## 1. Accounts
 
 - [x] GitHub (for the repo)
-- [ ] Supabase
+- [x] Supabase
 - [ ] Render (sign up with GitHub; no card needed for a free web service)
 - [ ] cron-job.org
 - [ ] ntfy app from the App Store (free)
