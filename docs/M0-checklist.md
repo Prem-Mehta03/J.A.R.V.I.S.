@@ -6,7 +6,7 @@ Goal: prove the risky pieces work before building anything. Do the steps in orde
 
 - [x] GitHub (for the repo)
 - [x] Supabase
-- [ ] Render (sign up with GitHub; no card needed for a free web service)
+- [x] Render (sign up with GitHub; no card needed for a free web service)
 - [ ] cron-job.org
 - [ ] ntfy app from the App Store (free)
 - [ ] Google AI Studio (Gemini key) and console.groq.com (Groq key)
@@ -23,7 +23,7 @@ Pass: the tables appear under the `jarvis` schema, and the `spaces` table has tw
 
 1. Push this repo to GitHub.
 2. In Render: New, then Blueprint, pick the repo, and point it at `infra/render.yaml`.
-3. Fill in the secret values it asks for (`N8N_HOST`, `WEBHOOK_URL`, and the four `DB_POSTGRESDB_*` values). `N8N_ENCRYPTION_KEY` is generated for you. Copy it somewhere safe, because losing it makes stored credentials unreadable.
+3. Fill in the secret values it asks for (`N8N_HOST`, `N8N_WEBHOOK_URL`, and the four `DB_POSTGRESDB_*` values). `N8N_ENCRYPTION_KEY` is generated for you. Copy it somewhere safe, because losing it makes stored credentials unreadable.
 4. First start takes a few minutes. Open the service URL and create the n8n owner account.
 5. In cron-job.org, add a job that sends a GET to `https://<your-service>.onrender.com/healthz` every 10 minutes.
 

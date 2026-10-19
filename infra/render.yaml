@@ -5,7 +5,7 @@ services:
     name: jarvis-n8n
     runtime: image
     image:
-      url: docker.io/n8nio/n8n:latest # TODO: pin a specific version once M0 works
+      url: docker.io/n8nio/n8n:2.43.8 # pinned: the version M0 first ran on. Upgrade on purpose, not by accident.
     plan: free
     region: singapore
     envVars:
@@ -16,7 +16,7 @@ services:
         value: https
       - key: N8N_HOST
         sync: false # your-service.onrender.com (no https://)
-      - key: WEBHOOK_URL
+      - key: N8N_WEBHOOK_URL # replaces the deprecated WEBHOOK_URL
         sync: false # https://your-service.onrender.com/
       # Encryption key for stored credentials. Generated once; never change or lose it.
       - key: N8N_ENCRYPTION_KEY
@@ -45,6 +45,9 @@ services:
         value: "true"
       - key: EXECUTIONS_DATA_MAX_AGE
         value: "168"
+      # Code-node runner: the free instance starts it slowly, so give it longer than the 30s default
+      - key: N8N_RUNNERS_GRANT_TOKEN_TTL
+        value: "120"
       # Time zone
       - key: GENERIC_TIMEZONE
         value: Asia/Kolkata
