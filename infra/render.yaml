@@ -1,0 +1,52 @@
+# Render Blueprint: n8n on the free plan, with all state in Supabase.
+# Free web services sleep after 15 minutes without traffic (see docs/M0-checklist.md, step 3, for the pinger).
+services:
+  - type: web
+    name: jarvis-n8n
+    runtime: image
+    image:
+      url: docker.io/n8nio/n8n:latest # TODO: pin a specific version once M0 works
+    plan: free
+    region: singapore
+    envVars:
+      # Network
+      - key: N8N_PORT
+        value: "10000"
+      - key: N8N_PROTOCOL
+        value: https
+      - key: N8N_HOST
+        sync: false # your-service.onrender.com (no https://)
+      - key: WEBHOOK_URL
+        sync: false # https://your-service.onrender.com/
+      # Encryption key for stored credentials. Generated once; never change or lose it.
+      - key: N8N_ENCRYPTION_KEY
+        generateValue: true
+      # Database: Supabase, separate "n8n" schema (Jarvis data lives in the "jarvis" schema)
+      - key: DB_TYPE
+        value: postgresdb
+      - key: DB_POSTGRESDB_SCHEMA
+        value: n8n
+      - key: DB_POSTGRESDB_HOST
+        sync: false
+      - key: DB_POSTGRESDB_PORT
+        value: "5432"
+      - key: DB_POSTGRESDB_DATABASE
+        value: postgres
+      - key: DB_POSTGRESDB_USER
+        sync: false
+      - key: DB_POSTGRESDB_PASSWORD
+        sync: false
+      - key: DB_POSTGRESDB_SSL_ENABLED
+        value: "true"
+      - key: DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED
+        value: "false"
+      # Housekeeping: keep the free 500 MB database small
+      - key: EXECUTIONS_DATA_PRUNE
+        value: "true"
+      - key: EXECUTIONS_DATA_MAX_AGE
+        value: "168"
+      # Time zone
+      - key: GENERIC_TIMEZONE
+        value: Asia/Kolkata
+      - key: TZ
+        value: Asia/Kolkata

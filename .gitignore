@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+*.credentials.json
+credentials*.json
+node_modules/
+.DS_Store
