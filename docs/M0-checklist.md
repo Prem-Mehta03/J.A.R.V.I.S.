@@ -4,7 +4,7 @@ Goal: prove the risky pieces work before building anything. Do the steps in orde
 
 ## 1. Accounts
 
-- [ ] GitHub (for the repo)
+- [x] GitHub (for the repo)
 - [ ] Supabase
 - [ ] Render (sign up with GitHub; no card needed for a free web service)
 - [ ] cron-job.org
