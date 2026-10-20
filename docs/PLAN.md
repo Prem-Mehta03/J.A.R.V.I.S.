@@ -94,7 +94,7 @@ Each milestone ends with a commit and a working demo.
   - n8n export routine with a secret scan: `scripts/export_n8n.py`.
   - Decisions and M0 results written down; copy of the OAuth pages in `site/`.
   - Done when: all of this is committed, migration 002 is applied, and the M0 test workflows are exported. See [M1-checklist.md](M1-checklist.md).
-- [ ] **M2: Chat brain.** Webhook, LLM intent router returning structured JSON, handlers for tasks, reminders, dates, weather, spaces.
+- [x] **M2: Chat brain (built, see docs/M2-checklist.md).** Webhook, LLM intent router returning structured JSON, handlers for tasks, reminders, dates, weather, spaces.
 - [ ] **M3: Reminder engine.** Scheduled check every few minutes, push alerts, recurrence, advance alerts for dates. Decide the backup alert channel here.
 - [ ] **M4: Frontend PWA.** Chat plus tabs (Today, Tasks, Reminders), manifest, Home Screen install, hosting.
 - [ ] **M5: Voice and Siri.** Mic to Whisper, spoken replies, "Wake up Jarvis" shortcut, "Jarvis reminders" shortcut.

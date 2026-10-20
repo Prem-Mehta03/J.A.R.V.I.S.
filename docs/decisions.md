@@ -41,3 +41,13 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 
 - Reminders sync through Siri Shortcuts, because n8n has no way to write to iOS Reminders. A time-of-day automation was confirmed to run silently on a locked phone.
 - The PWA stores the webhook token on the phone and never in its source.
+
+## Chat router (Oct 20, M2)
+
+- **The model only extracts; code decides.** The LLM returns intent JSON. Code validates every field (dates, lengths, recurrence rules, spaces) and runs fixed, parameterized SQL. The model never writes SQL and never writes the reply.
+- **Replies are templates.** Predictable, free, and the same on voice and screen.
+- **Times are India time (+05:30), fixed.** No daylight saving in India, so a fixed offset is enough.
+- **Gemini first, Groq on any failure or non-JSON answer.** If both fail the reply says so and nothing is written.
+- **Past reminders are rejected** (unless recurring) rather than silently saved.
+- **"Done with X" with several matches asks which one**; it never closes more than one item.
+- **Weather uses Open-Meteo** (no key). Home location lives in `jarvis.settings` (`home_location`, migration 003).

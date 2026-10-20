@@ -1,6 +1,6 @@
 # Webhook contract
 
-Status: draft. `jarvis-ping` exists (M0). The rest is the plan for M2 onward and may change.
+Status: `jarvis-ping` (M0) and `jarvis` (M2) exist. The rest is the plan for later milestones and may change.
 
 Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared token protects all of them.
 
@@ -18,12 +18,14 @@ Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared
 | Path | Method | Milestone | Purpose |
 |---|---|---|---|
 | `jarvis-ping` | POST | M0 (exists) | Health check. Returns `{"reply": "pong"}`. |
-| `jarvis` | POST | M2 | Chat. Text in, spoken-style reply out. Creates and changes items. |
+| `jarvis` | POST | M2 (exists) | Chat. Text in, spoken-style reply out. Creates and changes items. |
 | `jarvis-reminders` | GET | M6 | Pending reminders for the iOS Reminders sync. |
 | `jarvis-done` | POST | M6 | Mark reminders done (from the sync, or "Jarvis, done with X"). |
 | `jarvis-email-feedback` | POST | M8 | "That was an ad" corrections. |
 
 ### `POST jarvis` (M2)
+
+Limits: `text` is required and at most 1000 characters. Intents handled: `reminder.create`, `task.create`, `date.create`, `item.list`, `item.complete`, `item.cancel`, `space.create`, `weather`, `chat`, `clarify`.
 
 Request:
 
@@ -44,6 +46,8 @@ Response:
   "item": { "id": "uuid", "type": "reminder", "title": "Call home", "space": "personal", "remind_at": "2026-10-21T18:00:00+05:30" }
 }
 ```
+
+Error codes: `missing_text`, `text_too_long`, `llm_unavailable`, `bad_llm_output`, `unknown_intent`, `db_error`, `weather_error`. When Jarvis needs more detail (or several items match "done with X") the response has `"needs_clarification": true`.
 
 On a problem: `{ "ok": false, "reply": "I couldn't work out the time. When should I remind you?", "error": "missing_time" }`.
 
