@@ -74,3 +74,12 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Unchanged:** the Google Calendar backup when a push fails, one alert per reminder, retries every 5 minutes, and `last_push_error` in the settings table.
 - **Risks to watch:** `api.day.app` is a public server run by Bark's author, with no stated limits or uptime promise. If it ever fails, the Calendar backup covers reminders, and Bark can be self-hosted or replaced.
 - ntfy settings (`ntfy_topic`) are removed by migration 005.
+
+## The app (M4)
+
+- **Plain files, no build step.** HTML, CSS and ES modules; nothing to install, nothing to break. `logic.js` holds all date grouping so it can be unit-tested with Node (`node --test frontend/tests/logic.test.mjs`).
+- **Hosting:** GitHub Pages, in a `jarvis/` folder of the existing `<username>.github.io` repo. The source is public and holds no secrets; the server address and token are typed on the phone once.
+- **Token in localStorage.** Acceptable for one user on his own phone. On iPhone, Safari and the Home Screen app have separate storage, so set up inside the installed app.
+- **Own endpoint for lists** (`jarvis-items`) instead of asking the chat router: no language model, instant, deterministic.
+- **Offline:** the shell is cached by a service worker and the last list is kept, so the app opens with data even while Render is asleep.
+- **Strict CSP** (no inline script or style) and text-only rendering (`textContent`), so a stored title can never run as code.

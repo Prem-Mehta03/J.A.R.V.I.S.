@@ -7,7 +7,9 @@
         "path": "jarvis",
         "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {
+          "allowedOrigins": "*"
+        }
       },
       "id": "1bf8ae65-a9cf-5e84-980b-c4591ce8a98b",
       "name": "Webhook",

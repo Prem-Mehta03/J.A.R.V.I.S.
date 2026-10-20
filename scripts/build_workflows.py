@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json and 02-reminder-dispatcher.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "n8n" / "src"
 OUT = ROOT / "n8n" / "workflows" / "01-chat-router.json"
 OUT2 = ROOT / "n8n" / "workflows" / "02-reminder-dispatcher.json"
+OUT3 = ROOT / "n8n" / "workflows" / "03-items-api.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -85,7 +86,9 @@ nodes = [
         "path": "jarvis",
         "authentication": "headerAuth",
         "responseMode": "responseNode",
-        "options": {},
+        # The app runs on another address, so the browser needs permission to call this one. The token is sent in a header
+        # (never a cookie), so allowing every origin does not expose anything the token does not already protect.
+        "options": {"allowedOrigins": "*"},
     }, webhookId=uid("webhook path jarvis"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
 
     node("Prepare", "n8n-nodes-base.code", 2, [220, 300], {"jsCode": code("prepare.js")}),
@@ -343,6 +346,50 @@ dispatcher = {
 }
 
 
+items_nodes = [
+    node("Webhook", "n8n-nodes-base.webhook", 2.2, [0, 300], {
+        "httpMethod": "POST",
+        "path": "jarvis-items",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {"allowedOrigins": "*"},
+    }, webhookId=uid("webhook path jarvis-items"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
+
+    node("Items plan", "n8n-nodes-base.code", 2, [220, 300], {"jsCode": code("items-plan.js")}),
+
+    if_node("Needs database?", [440, 300], "={{ $json.plan.action === 'sql' }}"),
+
+    node("Run SQL", "n8n-nodes-base.postgres", 2.7, [660, 200], {
+        "operation": "executeQuery",
+        "query": "={{ $json.plan.sql }}",
+        "options": {"queryReplacement": "={{ $json.plan.params }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, alwaysOutputData=True, onError="continueRegularOutput"),
+
+    node("Items reply", "n8n-nodes-base.code", 2, [880, 300], {"jsCode": code("items-reply.js")}),
+
+    node("Respond", "n8n-nodes-base.respondToWebhook", 1.5, [1100, 300], {
+        "respondWith": "firstIncomingItem",
+        "options": {},
+    }),
+]
+
+items_connections = {
+    "Webhook": link(["Items plan"]),
+    "Items plan": link(["Needs database?"]),
+    "Needs database?": link(["Run SQL"], ["Items reply"]),
+    "Run SQL": link(["Items reply"]),
+    "Items reply": link(["Respond"]),
+}
+
+items_api = {
+    "name": "03 Items API",
+    "nodes": items_nodes,
+    "connections": items_connections,
+    "active": False,
+    "settings": {"executionOrder": "v1"},
+}
+
+
 def write(path, wf):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -353,3 +400,4 @@ def write(path, wf):
 if __name__ == "__main__":
     write(OUT, workflow)
     write(OUT2, dispatcher)
+    write(OUT3, items_api)

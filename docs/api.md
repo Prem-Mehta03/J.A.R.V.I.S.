@@ -51,6 +51,20 @@ Error codes: `missing_text`, `text_too_long`, `llm_unavailable`, `bad_llm_output
 
 On a problem: `{ "ok": false, "reply": "I couldn't work out the time. When should I remind you?", "error": "missing_time" }`.
 
+## `POST /webhook/jarvis-items` (M4, used by the app)
+
+Same `X-Jarvis-Token` header. No language model involved: fixed queries only.
+
+| Request body | Response |
+|---|---|
+| `{"action":"list"}` | `{"ok":true,"now":"ISO","items":[{"id","type","title","space","status","due_at","remind_at","recurrence","advance_days"}],"spaces":[{"slug","label"}]}`. Open reminders, tasks and dates, up to 300, times in +05:30. |
+| `{"action":"complete","id":"<uuid>"}` | `{"ok":true,"item":{...,"status":"done"}}` |
+| `{"action":"cancel","id":"<uuid>"}` | `{"ok":true,"item":{...,"status":"cancelled"}}` |
+
+Errors (HTTP 200, `ok:false`, with a `reply`): `bad_action`, `bad_id`, `not_found` (already closed), `db_error`. A wrong token is HTTP 403.
+
+CORS: both `jarvis` and `jarvis-items` have Allowed Origins `*` on the Webhook node. That is safe here because the token travels in a header, not a cookie, so a foreign page cannot ride on a logged-in session; it still needs the token.
+
 ## The token
 
 - Generate: `.\scripts\new-token.ps1 | Set-Clipboard` (64 hex characters). It is never printed into a file.
@@ -60,5 +74,5 @@ On a problem: `{ "ok": false, "reply": "I couldn't work out the time. When shoul
 
 ## Open points for later milestones
 
-- **CORS (M4).** Calls from the PWA come from another origin, and the custom header makes the browser send a preflight request first. The Webhook node has an "Allowed Origins (CORS)" option; set it to the PWA's address and test that the preflight succeeds. Shortcuts are not affected by CORS.
+- **CORS (done in M4).** See the `jarvis-items` section.
 - **Abuse.** The token is the only protection on a public address. If it ever looks abused, rotate it.

@@ -1,6 +1,6 @@
 # Jarvis: Personal Assistant Plan
 
-Status: M0, M1 and M2 complete; M3 (reminder engine) built, M3.1 (push through Bark instead of ntfy) in testing on the real services. Everything below runs on free tiers, no card. M0 results are in [M0-checklist.md](M0-checklist.md); the reasoning behind the choices is in [decisions.md](decisions.md).
+Status: M0 to M3.1 complete (reminders push through Bark); M4 (the app) built and tested locally, waiting for real-service checks. Everything below runs on free tiers, no card. M0 results are in [M0-checklist.md](M0-checklist.md); the reasoning behind the choices is in [decisions.md](decisions.md).
 
 ## 1. Goal
 
@@ -97,7 +97,7 @@ Each milestone ends with a commit and a working demo.
 - [x] **M2: Chat brain (built, see docs/M2-checklist.md).** Webhook, LLM intent router returning structured JSON, handlers for tasks, reminders, dates, weather, spaces.
 - [x] **M3: Reminder engine (built, see docs/M3-checklist.md).** A dispatcher checks every minute (starting up to a minute early so alerts land on time) and pushes due reminders and date alerts (through ntfy at first, Bark from M3.1). Dates alert at 9 AM a week before, a day before and on the day. If a push fails, a Google Calendar event replaces it. Mark M3 as fully done after the checklist's real-service tests pass.
 - [x] **M3.1: Push through Bark (built, see docs/M3.1-checklist.md).** Bark replaces ntfy; everything else in M3 is unchanged. Mark M3 and M3.1 done after the checklist's real-service tests pass.
-- [ ] **M4: Frontend PWA.** Chat plus tabs (Today, Tasks, Reminders), manifest, Home Screen install, hosting.
+- [x] **M4: Frontend PWA (built, see docs/M4-checklist.md).** Chat plus Today, Tasks, Reminders and Dates tabs, space filter, mark done or cancel, offline copy, manifest and Home Screen install, hosted on GitHub Pages. Backend addition: `03-items-api.json` (`jarvis-items`) and CORS on the webhooks. Mark fully done after the checklist's real-device tests pass.
 - [ ] **M5: Voice and Siri.** Mic to Whisper, spoken replies, "Wake up Jarvis" shortcut, "Jarvis reminders" shortcut.
 - [ ] **M6: iOS Reminders sync.** Two-way Shortcut sync and the voice "done" shortcut.
 - [ ] **M7: Habits, study, ideas.** Tables, handlers, tabs, streaks, weekly summary.

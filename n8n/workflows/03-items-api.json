@@ -1,0 +1,198 @@
+{
+  "name": "03 Items API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jarvis-items",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "1bf8ae65-a9cf-5e84-980b-c4591ce8a98b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "8f3ede18-a05f-5c09-94e3-a8355439da08",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Jarvis token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Items plan\": checks what the app asked for and picks the fixed database statement to run.\n// The app can list open items, or mark one done or cancelled by its id. Nothing else.\n// ---- shared helpers: scripts/build_workflows.py pastes this into every Code node that includes it ----\n// India has no daylight saving, so a fixed +05:30 offset is exact.\nconst IST_OFFSET_MIN = 330;\nconst DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];\n\nconst pad2 = (n) => String(n).padStart(2, '0');\n// Shift a Date so that the getUTC* methods return India clock values.\nconst toIst = (date) => new Date(date.getTime() + IST_OFFSET_MIN * 60000);\nconst addDays = (date, n) => new Date(date.getTime() + n * 86400000);\n\nfunction isoIst(date) {\n  const d = toIst(date);\n  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}+05:30`;\n}\n\nfunction startOfIstDay(date) {\n  const d = toIst(date);\n  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - IST_OFFSET_MIN * 60000);\n}\n\n// A moment on the India calendar: dayOffset days from today's date, at hour:minute.\nfunction istAt(now, dayOffset, hour, minute) {\n  return new Date(startOfIstDay(now).getTime() + dayOffset * 86400000 + (hour * 60 + (minute || 0)) * 60000);\n}\n\n// Accepts 2026-10-21, 2026-10-21T18:00, 2026-10-21T18:00:00+05:30, ...Z. No offset means India time.\nfunction parseWhen(value) {\n  if (typeof value !== 'string') return null;\n  const m = value.trim().match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?(?:\\.\\d+)?)?\\s*(Z|[+-]\\d{2}:?\\d{2})?$/);\n  if (!m) return null;\n  const [, y, mo, d, h, mi, s, tz] = m;\n  let offsetMin = IST_OFFSET_MIN;\n  if (tz) {\n    if (tz === 'Z') offsetMin = 0;\n    else {\n      const digits = tz.replace(':', '');\n      offsetMin = (digits[0] === '-' ? -1 : 1) * (Number(digits.slice(1, 3)) * 60 + Number(digits.slice(3, 5)));\n    }\n  }\n  const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h || 0), Number(mi || 0), Number(s || 0)) - offsetMin * 60000;\n  const date = new Date(utc);\n  const year = Number(y);\n  if (Number.isNaN(date.getTime()) || year < 2020 || year > 2100) return null;\n  // Reject impossible dates such as 2026-02-31 (they would silently roll over).\n  const check = new Date(Date.UTC(year, Number(mo) - 1, Number(d)));\n  if (check.getUTCMonth() !== Number(mo) - 1 || check.getUTCDate() !== Number(d)) return null;\n  return date;\n}\n\nfunction clock12(date) {\n  const d = toIst(date);\n  const h = d.getUTCHours();\n  const m = d.getUTCMinutes();\n  const h12 = h % 12 || 12;\n  return `${h12}${m ? ':' + pad2(m) : ''} ${h >= 12 ? 'PM' : 'AM'}`;\n}\n\n// \"today at 6 PM\", \"tomorrow\", \"on Friday at 4:30 PM\", \"on 12 November\". allDay drops the time.\nfunction speakWhen(date, now, allDay) {\n  const diff = Math.round((startOfIstDay(date).getTime() - startOfIstDay(now).getTime()) / 86400000);\n  const d = toIst(date);\n  let day;\n  if (diff === 0) day = 'today';\n  else if (diff === 1) day = 'tomorrow';\n  else if (diff === -1) day = 'yesterday';\n  else if (diff > 1 && diff < 7) day = 'on ' + DAY_NAMES[d.getUTCDay()];\n  else {\n    day = `on ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`;\n    if (d.getUTCFullYear() !== toIst(now).getUTCFullYear()) day += ` ${d.getUTCFullYear()}`;\n  }\n  return allDay ? day : `${day} at ${clock12(date)}`;\n}\n\nfunction lowerFirst(text) {\n  // \"Call home\" -> \"call home\", but leave \"SQL exam\" and \"I owe Ravi\" alone.\n  if (text.length > 1 && /[A-Z]/.test(text[0]) && /[a-z]/.test(text[1])) return text[0].toLowerCase() + text.slice(1);\n  return text;\n}\n\n// Models sometimes wrap JSON in code fences or add a sentence around it.\nfunction parseLlmJson(text) {\n  if (typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try {\n    const parsed = JSON.parse(cleaned.slice(start, end + 1));\n    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nconst first = $input.first().json || {};\nconst body = first.body && typeof first.body === 'object' ? first.body : {};\nconst action = typeof body.action === 'string' ? body.action : '';\nconst id = typeof body.id === 'string' ? body.id.trim().toLowerCase() : '';\nconst now = new Date();\n\nconst fail = (error, reply) => [{ json: { plan: { ok: false, action: 'reply', error, reply } } }];\n\nconst LIST_SQL = `select\n  (select coalesce(json_agg(x), '[]'::json) from (\n     select id, type, title, space, status, due_at, remind_at, recurrence, advance_days, created_at\n     from jarvis.items\n     where status = 'open' and type in ('reminder', 'task', 'date')\n     order by coalesce(remind_at, due_at) nulls last, created_at\n     limit 300\n   ) x) as items,\n  (select coalesce(json_agg(json_build_object('slug', slug, 'label', label) order by slug), '[]'::json) from jarvis.spaces) as spaces`;\n\nconst CLOSE_SQL = `update jarvis.items set status = $2\nwhere id = $1::uuid and status = 'open' and type in ('reminder', 'task', 'date')\nreturning id, type, title, space, status`;\n\nif (action === 'list') {\n  return [{ json: { plan: { ok: true, action: 'sql', kind: 'list', sql: LIST_SQL, params: [], now_iso: isoIst(now) } } }];\n}\nif (action === 'complete' || action === 'cancel') {\n  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {\n    return fail('bad_id', 'That item has no valid id.');\n  }\n  return [{ json: { plan: { ok: true, action: 'sql', kind: action, sql: CLOSE_SQL, params: [id, action === 'complete' ? 'done' : 'cancelled'], now_iso: isoIst(now) } } }];\n}\nreturn fail('bad_action', 'The app asked for something Jarvis does not do.');\n"
+      },
+      "id": "ad7d99ca-c2a8-5767-a4c8-deda1c36e544",
+      "name": "Items plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3f161f3f-8cce-58b1-b1be-c98afdf28869",
+              "leftValue": "={{ $json.plan.action === 'sql' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0abf8c0f-4e34-5c9c-b227-d6b92141f4ad",
+      "name": "Needs database?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.plan.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.plan.params }}"
+        }
+      },
+      "id": "b392feab-b49f-502c-bf97-61d946d97e0c",
+      "name": "Run SQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Items reply\": turns the database rows into the JSON the app shows.\n// ---- shared helpers: scripts/build_workflows.py pastes this into every Code node that includes it ----\n// India has no daylight saving, so a fixed +05:30 offset is exact.\nconst IST_OFFSET_MIN = 330;\nconst DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];\n\nconst pad2 = (n) => String(n).padStart(2, '0');\n// Shift a Date so that the getUTC* methods return India clock values.\nconst toIst = (date) => new Date(date.getTime() + IST_OFFSET_MIN * 60000);\nconst addDays = (date, n) => new Date(date.getTime() + n * 86400000);\n\nfunction isoIst(date) {\n  const d = toIst(date);\n  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}+05:30`;\n}\n\nfunction startOfIstDay(date) {\n  const d = toIst(date);\n  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - IST_OFFSET_MIN * 60000);\n}\n\n// A moment on the India calendar: dayOffset days from today's date, at hour:minute.\nfunction istAt(now, dayOffset, hour, minute) {\n  return new Date(startOfIstDay(now).getTime() + dayOffset * 86400000 + (hour * 60 + (minute || 0)) * 60000);\n}\n\n// Accepts 2026-10-21, 2026-10-21T18:00, 2026-10-21T18:00:00+05:30, ...Z. No offset means India time.\nfunction parseWhen(value) {\n  if (typeof value !== 'string') return null;\n  const m = value.trim().match(/^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}))?(?:\\.\\d+)?)?\\s*(Z|[+-]\\d{2}:?\\d{2})?$/);\n  if (!m) return null;\n  const [, y, mo, d, h, mi, s, tz] = m;\n  let offsetMin = IST_OFFSET_MIN;\n  if (tz) {\n    if (tz === 'Z') offsetMin = 0;\n    else {\n      const digits = tz.replace(':', '');\n      offsetMin = (digits[0] === '-' ? -1 : 1) * (Number(digits.slice(1, 3)) * 60 + Number(digits.slice(3, 5)));\n    }\n  }\n  const utc = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h || 0), Number(mi || 0), Number(s || 0)) - offsetMin * 60000;\n  const date = new Date(utc);\n  const year = Number(y);\n  if (Number.isNaN(date.getTime()) || year < 2020 || year > 2100) return null;\n  // Reject impossible dates such as 2026-02-31 (they would silently roll over).\n  const check = new Date(Date.UTC(year, Number(mo) - 1, Number(d)));\n  if (check.getUTCMonth() !== Number(mo) - 1 || check.getUTCDate() !== Number(d)) return null;\n  return date;\n}\n\nfunction clock12(date) {\n  const d = toIst(date);\n  const h = d.getUTCHours();\n  const m = d.getUTCMinutes();\n  const h12 = h % 12 || 12;\n  return `${h12}${m ? ':' + pad2(m) : ''} ${h >= 12 ? 'PM' : 'AM'}`;\n}\n\n// \"today at 6 PM\", \"tomorrow\", \"on Friday at 4:30 PM\", \"on 12 November\". allDay drops the time.\nfunction speakWhen(date, now, allDay) {\n  const diff = Math.round((startOfIstDay(date).getTime() - startOfIstDay(now).getTime()) / 86400000);\n  const d = toIst(date);\n  let day;\n  if (diff === 0) day = 'today';\n  else if (diff === 1) day = 'tomorrow';\n  else if (diff === -1) day = 'yesterday';\n  else if (diff > 1 && diff < 7) day = 'on ' + DAY_NAMES[d.getUTCDay()];\n  else {\n    day = `on ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`;\n    if (d.getUTCFullYear() !== toIst(now).getUTCFullYear()) day += ` ${d.getUTCFullYear()}`;\n  }\n  return allDay ? day : `${day} at ${clock12(date)}`;\n}\n\nfunction lowerFirst(text) {\n  // \"Call home\" -> \"call home\", but leave \"SQL exam\" and \"I owe Ravi\" alone.\n  if (text.length > 1 && /[A-Z]/.test(text[0]) && /[a-z]/.test(text[1])) return text[0].toLowerCase() + text.slice(1);\n  return text;\n}\n\n// Models sometimes wrap JSON in code fences or add a sentence around it.\nfunction parseLlmJson(text) {\n  if (typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try {\n    const parsed = JSON.parse(cleaned.slice(start, end + 1));\n    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;\n  } catch (e) {\n    return null;\n  }\n}\n\nconst plan = $('Items plan').first().json.plan;\n\nif (plan.action === 'reply') {\n  return [{ json: { ok: false, error: plan.error, reply: plan.reply } }];\n}\n\nconst rows = $input.all().map((i) => i.json).filter((r) => r && Object.keys(r).length > 0);\nconst dbError = rows.length > 0 && rows[0].error !== undefined && rows[0].id === undefined && rows[0].items === undefined;\nif (dbError) {\n  return [{ json: { ok: false, error: 'db_error', reply: \"I couldn't reach my database just now. Please try again in a minute.\" } }];\n}\n\nconst iso = (value) => (value ? isoIst(new Date(value)) : null);\n\nif (plan.kind === 'list') {\n  const row = rows[0];\n  if (!row || !Array.isArray(row.items)) {\n    return [{ json: { ok: false, error: 'db_error', reply: \"I couldn't reach my database just now. Please try again in a minute.\" } }];\n  }\n  const items = row.items.map((r) => ({\n    id: r.id, type: r.type, title: r.title, space: r.space, status: r.status,\n    due_at: iso(r.due_at), remind_at: iso(r.remind_at), recurrence: r.recurrence || null,\n    advance_days: Array.isArray(r.advance_days) ? r.advance_days : [],\n  }));\n  return [{ json: { ok: true, now: plan.now_iso, items, spaces: Array.isArray(row.spaces) ? row.spaces : [] } }];\n}\n\n// complete or cancel\nconst r = rows[0];\nif (!r || !r.id) {\n  return [{ json: { ok: false, error: 'not_found', reply: 'That item is already closed or no longer exists.' } }];\n}\nreturn [{ json: { ok: true, item: { id: r.id, type: r.type, title: r.title, space: r.space, status: r.status } } }];\n"
+      },
+      "id": "9715ba2b-f7cb-5e0f-a9be-27d01165d00f",
+      "name": "Items reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "id": "fa1b6517-3a37-56fd-95f9-6a21c9cf7578",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Items plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Items plan": {
+      "main": [
+        [
+          {
+            "node": "Needs database?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs database?": {
+      "main": [
+        [
+          {
+            "node": "Run SQL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Items reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run SQL": {
+      "main": [
+        [
+          {
+            "node": "Items reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Items reply": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

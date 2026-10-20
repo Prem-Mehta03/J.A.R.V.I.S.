@@ -24,7 +24,7 @@ n8n/workflows/   workflow JSON (01 chat router, 02 reminder dispatcher; no crede
 n8n/src/         the JavaScript inside each Code node, as plain files
 n8n/tests/       unit tests: node --test n8n/tests/router.test.mjs n8n/tests/m3.test.mjs
 scripts/         new-token.ps1, export_n8n.py, build_workflows.py
-frontend/        the PWA (from M4)
+frontend/        the PWA (M4): open index.html through any static host
 shortcuts/       Siri Shortcut notes
 site/            copy of the two pages Google's OAuth screen links to
 ```
