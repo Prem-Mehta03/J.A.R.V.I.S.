@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json and 02-reminder-dispatcher.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "n8n" / "src"
 OUT = ROOT / "n8n" / "workflows" / "01-chat-router.json"
+OUT2 = ROOT / "n8n" / "workflows" / "02-reminder-dispatcher.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -71,7 +72,8 @@ def link(*targets):
 
 CONTEXT_SQL = """select
   (select coalesce(json_agg(json_build_object('slug', slug, 'label', label) order by slug), '[]'::json) from jarvis.spaces) as spaces,
-  (select value from jarvis.settings where key = 'home_location') as home_location"""
+  (select value from jarvis.settings where key = 'home_location') as home_location,
+  (select value from jarvis.settings where key = 'calendar_backup') as calendar_backup"""
 
 GEMINI_OK = (
     "={{ !!($json.candidates && $json.candidates[0] && $json.candidates[0].content && $json.candidates[0].content.parts"
@@ -139,6 +141,36 @@ nodes = [
         "respondWith": "firstIncomingItem",
         "options": {},
     }),
+
+    # Side branch below the reply path: the Google Calendar backup copy. It runs after the reply is sent.
+    node("Calendar plan", "n8n-nodes-base.code", 2, [2420, 560], {"jsCode": code("calendar-plan.js")}),
+
+    if_node("Create event?", [2640, 560], "={{ $json.op === 'create' }}"),
+
+    node("Create calendar event", "n8n-nodes-base.httpRequest", 4.5, [2860, 480], {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {"timeout": 30000},
+    }, credentials={"googleCalendarOAuth2Api": {"id": "", "name": "Google Calendar"}}, onError="continueRegularOutput"),
+
+    node("Save event id", "n8n-nodes-base.postgres", 2.7, [3080, 480], {
+        "operation": "executeQuery",
+        "query": "update jarvis.items set calendar_event_id = $2 where id = $1::uuid and $2 <> ''",
+        "options": {"queryReplacement": "={{ [$('Calendar plan').item.json.item_id, $json.id || ''] }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, onError="continueRegularOutput"),
+
+    node("Delete calendar event", "n8n-nodes-base.httpRequest", 4.5, [2860, 660], {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/primary/events/{{ encodeURIComponent($json.event_id) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {"timeout": 30000},
+    }, credentials={"googleCalendarOAuth2Api": {"id": "", "name": "Google Calendar"}}, onError="continueRegularOutput"),
 ]
 
 # Prepare is only valid when the text is there; Plan handles the invalid case itself.
@@ -153,7 +185,10 @@ connections = {
     "Groq": link(["Plan"]),
     "Plan": link(["Needs database?"]),
     "Needs database?": link(["Run SQL"], ["Reply"]),
-    "Run SQL": link(["Reply"]),
+    "Run SQL": link(["Reply", "Calendar plan"]),
+    "Calendar plan": link(["Create event?"]),
+    "Create event?": link(["Create calendar event"], ["Delete calendar event"]),
+    "Create calendar event": link(["Save event id"]),
     "Reply": link(["Respond"]),
 }
 
@@ -165,8 +200,167 @@ workflow = {
     "settings": {"executionOrder": "v1"},
 }
 
+CLAIM_SQL = """with roll as (
+  -- A yearly date (birthday) moves to next year two days after it has passed.
+  update jarvis.items
+  set due_at = ((due_at at time zone 'Asia/Kolkata') + interval '1 year') at time zone 'Asia/Kolkata'
+  where type = 'date' and status = 'open' and recurrence like 'FREQ=YEARLY%' and due_at is not null
+    and now() >= due_at + interval '2 days'
+  returning id
+),
+r as (
+  update jarvis.items set last_notified_at = now(), next_attempt_at = null
+  where id in (
+    select id from jarvis.items
+    where type = 'reminder' and status = 'open'
+      and remind_at <= now() and remind_at > now() - interval '1 day'
+      and (last_notified_at is null or last_notified_at < remind_at)
+      and (next_attempt_at is null or next_attempt_at <= now())
+    order by remind_at
+    limit 10
+    for update skip locked
+  )
+  returning id, title, remind_at, recurrence
+),
+d as (
+  select distinct i.id, i.title, i.due_at, n as adv, (i.due_at at time zone 'Asia/Kolkata')::date as occurrence
+  from jarvis.items i
+  cross join lateral unnest(array_append(i.advance_days, 0)) as n
+  cross join lateral (
+    select (((i.due_at at time zone 'Asia/Kolkata')::date - n)::timestamp + interval '9 hours') at time zone 'Asia/Kolkata' as fire
+  ) f
+  where i.type = 'date' and i.status = 'open' and i.due_at is not null
+    and now() >= f.fire and now() < f.fire + interval '1 day'
+    and f.fire >= i.created_at - interval '1 minute'
+),
+dl as (
+  insert into jarvis.alert_log (item_id, occurrence, advance_days)
+  select id, occurrence, adv from d
+  on conflict (item_id, occurrence, advance_days) do update
+    set ok = true, retry_at = null
+    where jarvis.alert_log.ok = false and jarvis.alert_log.retry_at <= now()
+  returning item_id, occurrence, advance_days
+)
+select 'reminder' as kind, r.id, r.title, r.remind_at, null::timestamptz as due_at, r.recurrence, null::int as advance_days,
+       (select value #>> '{}' from jarvis.settings where key = 'ntfy_topic') as ntfy_topic
+from r
+union all
+select 'date', d.id, d.title, null, d.due_at, null, d.adv,
+       (select value #>> '{}' from jarvis.settings where key = 'ntfy_topic')
+from d join dl on dl.item_id = d.id and dl.occurrence = d.occurrence and dl.advance_days = d.adv"""
+
+RECORD_SQL = """with r as (
+  select * from jsonb_to_recordset($1::jsonb) as x(id uuid, kind text, ok boolean, next_remind text, occurrence date, adv int)
+),
+a as (
+  update jarvis.items i set remind_at = r.next_remind::timestamptz
+  from r where i.id = r.id and r.kind = 'reminder' and r.ok and r.next_remind <> ''
+  returning i.id
+),
+b as (
+  update jarvis.items i set last_notified_at = null, next_attempt_at = now() + interval '5 minutes'
+  from r where i.id = r.id and r.kind = 'reminder' and not r.ok
+  returning i.id
+),
+c as (
+  update jarvis.alert_log l set ok = false, retry_at = now() + interval '5 minutes'
+  from r where r.kind = 'date' and not r.ok and l.item_id = r.id and l.occurrence = r.occurrence and l.advance_days = r.adv
+  returning 1
+)
+select (select count(*) from a) as rolled, (select count(*) from b) as retry_reminders, (select count(*) from c) as retry_dates"""
+
+STALE_SQL = """select id, remind_at, recurrence from jarvis.items
+where type = 'reminder' and status = 'open' and recurrence is not null and remind_at <= now() - interval '1 day'
+order by remind_at
+limit 20"""
+
+STALE_UPDATE_SQL = """update jarvis.items i set remind_at = x.next_remind::timestamptz, last_notified_at = null
+from jsonb_to_recordset($1::jsonb) as x(id uuid, next_remind text)
+where i.id = x.id and x.next_remind <> ''"""
+
+dispatcher_nodes = [
+    node("Every minute", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 300], {
+        "rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]},
+    }),
+
+    node("Claim due alerts", "n8n-nodes-base.postgres", 2.7, [240, 200], {
+        "operation": "executeQuery",
+        "query": CLAIM_SQL,
+        "options": {},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
+
+    node("Compose", "n8n-nodes-base.code", 2, [480, 200], {"jsCode": code("dispatch-compose.js")}),
+
+    if_node("Has topic?", [700, 200], "={{ $json.topic !== '' }}"),
+
+    node("ntfy", "n8n-nodes-base.httpRequest", 4.5, [920, 120], {
+        "method": "POST",
+        "url": "=https://ntfy.sh/{{ $json.topic }}",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "Title", "value": "={{ $json.title }}"},
+            {"name": "Priority", "value": "={{ $json.priority }}"},
+            {"name": "Tags", "value": "={{ $json.tags }}"},
+        ]},
+        "sendBody": True,
+        "contentType": "raw",
+        "rawContentType": "text/plain; charset=utf-8",
+        "body": "={{ $json.message }}",
+        "options": {"timeout": 20000},
+    }, onError="continueRegularOutput"),
+
+    node("Finish", "n8n-nodes-base.code", 2, [1140, 200], {"jsCode": code("dispatch-finish.js")}),
+
+    node("Record outcome", "n8n-nodes-base.postgres", 2.7, [1360, 200], {
+        "operation": "executeQuery",
+        "query": RECORD_SQL,
+        "options": {"queryReplacement": "={{ [$json.rows] }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
+
+    # A repeating reminder whose time passed more than a day ago (the service was asleep) is moved on without a stale alert.
+    node("Find stale repeats", "n8n-nodes-base.postgres", 2.7, [240, 480], {
+        "operation": "executeQuery",
+        "query": STALE_SQL,
+        "options": {},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
+
+    node("Roll stale", "n8n-nodes-base.code", 2, [480, 480], {"jsCode": code("dispatch-stale.js")}),
+
+    node("Save stale", "n8n-nodes-base.postgres", 2.7, [700, 480], {
+        "operation": "executeQuery",
+        "query": STALE_UPDATE_SQL,
+        "options": {"queryReplacement": "={{ [$json.rows] }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
+]
+
+dispatcher_connections = {
+    "Every minute": link(["Claim due alerts", "Find stale repeats"]),
+    "Claim due alerts": link(["Compose"]),
+    "Compose": link(["Has topic?"]),
+    "Has topic?": link(["ntfy"], ["Finish"]),
+    "ntfy": link(["Finish"]),
+    "Finish": link(["Record outcome"]),
+    "Find stale repeats": link(["Roll stale"]),
+    "Roll stale": link(["Save stale"]),
+}
+
+dispatcher = {
+    "name": "02 Reminder Dispatcher",
+    "nodes": dispatcher_nodes,
+    "connections": dispatcher_connections,
+    "active": False,
+    # Running every minute: do not keep a record of every successful run.
+    "settings": {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveManualExecutions": False},
+}
+
+
+def write(path, wf):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(wf, indent=2, ensure_ascii=False) + "\n")
+    print("wrote", path.relative_to(ROOT))
+
+
 if __name__ == "__main__":
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(json.dumps(workflow, indent=2, ensure_ascii=False) + "\n")
-    print("wrote", OUT.relative_to(ROOT))
+    write(OUT, workflow)
+    write(OUT2, dispatcher)

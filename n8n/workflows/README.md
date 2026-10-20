@@ -25,3 +25,7 @@ In the workflow, use the menu, then Download. A hand-made export is not checked 
 ## Importing
 
 In n8n: create a new workflow, then menu, Import from file. Credentials are not included, so reconnect each credential after importing.
+
+## Replacing a workflow with a newer version
+
+Two active workflows cannot share a webhook path. To update `01 Chat Router`: deactivate the old one, import the new file, choose credentials, activate it, then delete the old one.

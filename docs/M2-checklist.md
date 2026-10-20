@@ -60,9 +60,11 @@ I tested the logic with 25 unit tests and ran the workflow on a local n8n agains
 
 ## Done when
 
-- [ ] Every phrase in section 3 gets a sensible reply
-- [ ] Rows appear in `jarvis.items` with the right type, time and space
-- [ ] Groq fallback works
-- [ ] `docs/M2-checklist.md` results noted below
+- [x] Every phrase in section 3 gets a sensible reply
+- [x] Rows appear in `jarvis.items` with the right type, time and space
+- [x] Groq fallback works
+- [x] `docs/M2-checklist.md` results noted below
 
 Results / notes:
+
+- Oct 20: all phrases worked on the real instance. Gemini accepts the request fields (including `thinkingConfig`), and the Groq fallback worked in a real run. M2 closed.

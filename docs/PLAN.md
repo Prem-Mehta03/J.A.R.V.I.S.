@@ -95,7 +95,7 @@ Each milestone ends with a commit and a working demo.
   - Decisions and M0 results written down; copy of the OAuth pages in `site/`.
   - Done when: all of this is committed, migration 002 is applied, and the M0 test workflows are exported. See [M1-checklist.md](M1-checklist.md).
 - [x] **M2: Chat brain (built, see docs/M2-checklist.md).** Webhook, LLM intent router returning structured JSON, handlers for tasks, reminders, dates, weather, spaces.
-- [ ] **M3: Reminder engine.** Scheduled check every few minutes, push alerts, recurrence, advance alerts for dates. Decide the backup alert channel here.
+- [x] **M3: Reminder engine (built, see docs/M3-checklist.md).** A dispatcher checks every minute and pushes due reminders and date alerts through ntfy; Google Calendar copies are the backup.
 - [ ] **M4: Frontend PWA.** Chat plus tabs (Today, Tasks, Reminders), manifest, Home Screen install, hosting.
 - [ ] **M5: Voice and Siri.** Mic to Whisper, spoken replies, "Wake up Jarvis" shortcut, "Jarvis reminders" shortcut.
 - [ ] **M6: iOS Reminders sync.** Two-way Shortcut sync and the voice "done" shortcut.
@@ -107,7 +107,7 @@ Each milestone ends with a commit and a working demo.
 
 ## 8. Open questions
 
-1. Backup alert channel for when ntfy.sh rate-limits the shared Render address: Telegram bot, Google Calendar events, or both? (Decide by M3.)
+1. ~~Backup alert channel~~ Decided in M3: Google Calendar events (no Telegram).
 2. Which spaces beyond personal and college?
 3. Preferred morning briefing time? (Stored in `settings` once decided.)
 4. Which habits and study subjects to start with?
