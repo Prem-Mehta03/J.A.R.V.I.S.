@@ -7,9 +7,9 @@ Goal: prove the risky pieces work before building anything. Do the steps in orde
 - [x] GitHub (for the repo)
 - [x] Supabase
 - [x] Render (sign up with GitHub; no card needed for a free web service)
-- [ ] cron-job.org
-- [ ] ntfy app from the App Store (free)
-- [ ] Google AI Studio (Gemini key) and console.groq.com (Groq key)
+- [x] cron-job.org
+- [x] ntfy app from the App Store (free)
+- [x] Google AI Studio (Gemini key) and console.groq.com (Groq key)
 
 ## 2. Database (Supabase)
 
