@@ -2,7 +2,7 @@
 
 A personal assistant for my iPhone: reminders, tasks, important dates, habits, study logs, ideas, and a two-account Gmail digest. Talk or type to it. It runs on free tiers only (no card).
 
-Status: **M0, M1 and M2 done. M3 (reminder engine) built, being tested on the real services.** See [docs/PLAN.md](docs/PLAN.md) for the plan, [docs/decisions.md](docs/decisions.md) for why things are the way they are, and [docs/M3-checklist.md](docs/M3-checklist.md) for what to do next. Earlier results: [M0](docs/M0-checklist.md), [M1](docs/M1-checklist.md), [M2](docs/M2-checklist.md).
+Status: **M0, M1 and M2 done. M3 (reminder engine) and M3.1 (Bark push) built, being tested on the real services.** See [docs/PLAN.md](docs/PLAN.md) for the plan, [docs/decisions.md](docs/decisions.md) for why things are the way they are, and [docs/M3.1-checklist.md](docs/M3.1-checklist.md) for what to do next. Earlier results: [M0](docs/M0-checklist.md), [M1](docs/M1-checklist.md), [M2](docs/M2-checklist.md).
 
 ## Stack
 
@@ -11,13 +11,13 @@ Status: **M0, M1 and M2 done. M3 (reminder engine) built, being tested on the re
 | Automation / brain | n8n 2.43.8 (self-hosted on Render free, kept awake by cron-job.org): chat router and reminder dispatcher |
 | Database | Supabase free Postgres |
 | LLM | Gemini free tier, Groq free tier as fallback |
-| Push alerts | ntfy, with a Google Calendar event as the backup when a push fails |
+| Push alerts | Bark (iPhone app), with a Google Calendar event as the backup when a push fails |
 | iPhone | Siri Shortcuts + a small PWA |
 
 ## Layout
 
 ```
-docs/            PLAN.md, M0 to M3 checklists, api.md, decisions.md
+docs/            PLAN.md, M0 to M3.1 checklists, api.md, decisions.md
 db/migrations/   SQL, applied in order in the Supabase SQL editor
 infra/           render.yaml (n8n on Render), .env.example
 n8n/workflows/   workflow JSON (01 chat router, 02 reminder dispatcher; no credentials, no pinned data)

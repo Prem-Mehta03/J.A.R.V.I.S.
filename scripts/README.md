@@ -33,7 +33,7 @@ What it does:
 
 - Reads every workflow through n8n's public API.
 - Removes pinned test data (which can contain real email text), static data and volatile fields.
-- Scans the rest for things that look like secrets (ntfy tokens and topic names, Google and Groq keys, bearer tokens, Telegram bot tokens, long hex strings). A workflow that matches is **not written**, and the message says which node and what it looked like.
+- Scans the rest for things that look like secrets (ntfy tokens and topic names, Bark device keys, Google and Groq keys, bearer tokens, Telegram bot tokens, long hex strings). A workflow that matches is **not written**, and the message says which node and what it looked like.
 - Refuses plain `http://` addresses, and never follows redirects, so the API key can't leak.
 
 Exit code 2 means a workflow was left out because it looked like it held a secret. Fix it by moving the secret into an n8n credential. If a workflow legitimately cannot be exported cleanly, leave it out on purpose with `--skip "Workflow name"`.

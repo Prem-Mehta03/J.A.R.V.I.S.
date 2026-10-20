@@ -19,7 +19,7 @@ See `scripts/README.md`.
 In the workflow, use the menu, then Download. A hand-made export is not checked for you, so before committing:
 
 - Unpin any pinned data on every node. Pinned data can be real email text.
-- Search the file for `tk_`, `Bearer`, `AIza`, `gsk_` and your ntfy topic name.
+- Search the file for `tk_`, `Bearer`, `AIza`, `gsk_` and your Bark device key (the part after `api.day.app/`).
 - Make sure no node has a token typed into its fields. Tokens belong in n8n credentials.
 
 ## Importing

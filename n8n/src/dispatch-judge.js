@@ -12,18 +12,26 @@ const end = new Date(start.getTime() + 15 * 60000);
 
 return planned.map((p, idx) => {
   const r = results.length === planned.length ? results[idx] : null;
-  // A real ntfy answer has an id and no error. The no-topic path passes the composed items straight on: those failed.
-  const ok = !!(r && !r.error && !r.kind && (r.id || r.event));
-  // Keep the reason, so it can be read later in jarvis.settings (key last_push_error).
+  // The Bark node returns the full answer (statusCode, headers, body). The no-key path passes the composed items straight on.
+  let ok = false;
   let pushError = '';
-  if (!ok) {
-    if (!p.topic) pushError = 'no ntfy_topic is set in jarvis.settings';
-    else if (r && r.error) {
-      const e = r.error;
-      pushError = typeof e === 'string' ? e : ([e && e.httpCode, e && e.message, e && e.description].filter(Boolean).join(' - ') || JSON.stringify(e));
-    } else pushError = 'ntfy gave an unexpected answer';
-    pushError = pushError.replace(/\s+/g, ' ').slice(0, 300);
+  if (r && r.kind) {
+    pushError = 'no bark_key is set in jarvis.settings';
+  } else if (r && typeof r.statusCode === 'number') {
+    const body = r.body && typeof r.body === 'object' ? r.body : {};
+    ok = r.statusCode >= 200 && r.statusCode < 300 && (body.code === undefined || Number(body.code) === 200);
+    if (!ok) {
+      const detail = typeof r.body === 'string' ? r.body : (body.message || body.error || JSON.stringify(r.body || ''));
+      const retry = r.headers && (r.headers['retry-after'] || r.headers['x-ratelimit-reset']);
+      pushError = `HTTP ${r.statusCode}${body.code ? ` (code ${body.code})` : ''}: ${detail}${retry ? ` [retry-after ${retry}]` : ''}`;
+    }
+  } else if (r && r.error) {
+    const e = r.error;
+    pushError = typeof e === 'string' ? e : ([e && e.httpCode, e && e.message, e && e.description].filter(Boolean).join(' - ') || JSON.stringify(e));
+  } else {
+    pushError = 'Bark gave no answer';
   }
+  pushError = pushError.replace(/\s+/g, ' ').slice(0, 400);
   const backup = ok ? null : {
     summary: (p.kind === 'reminder' ? '⏰ ' : '📅 ') + p.message,
     description: 'Sent by Jarvis because the push notification failed',

@@ -34,7 +34,7 @@ def workflow(wf_id, name, nodes=None, **extra):
 
 
 LEAKY_NODE = {"name": "Send push", "type": "n8n-nodes-base.httpRequest",
-              "parameters": {"url": "https://ntfy.sh/jarvis-secrettopic123",
+              "parameters": {"url": "https://ntfy.sh/jarvis-secrettopic123", "notes": "https://api.day.app/AbCdEfGhIjKlMnOpQr/hi",
                              "headerParameters": {"parameters": [{"name": "Authorization", "value": "Bearer tk_abcdefghijklmnopqrstuv"}]}}}
 
 PAGES = {
@@ -92,6 +92,8 @@ class ExportTests(unittest.TestCase):
         self.assertIn("bearer token", why)
         self.assertIn("ntfy access token", why)
         self.assertIn("ntfy topic", why)
+        self.assertIn("Bark device key", why)
+        self.assertNotIn("AbCdEfGhIjKlMnOpQr", why)
         self.assertNotIn("tk_abcdefghijklmnopqrstuv", why)  # the message must not repeat the secret
 
     def test_pinned_data_and_volatile_fields_are_removed(self):

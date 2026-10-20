@@ -33,7 +33,7 @@ async function run(wf, name, { input, nodes = {} }) {
 const ist = (s) => new Date(s).toISOString();
 const compose = (rows) => run(dispatcher, 'Compose', { input: rows });
 const nextOf = async (rule, last) => {
-  const [out] = await compose([{ kind: 'reminder', id: 'x', title: 't', remind_at: ist(last), recurrence: rule, ntfy_topic: 'tp' }]);
+  const [out] = await compose([{ kind: 'reminder', id: 'x', title: 't', remind_at: ist(last), recurrence: rule, bark_key: 'bk' }]);
   return out.next_remind;
 };
 
@@ -71,42 +71,48 @@ test('INTERVAL is respected and a rule it does not understand gives no next time
 test('Compose writes the push text for reminders and for each kind of date alert', async () => {
   const due = ist('2026-10-27T00:00:00+05:30');
   const out = await compose([
-    { kind: 'reminder', id: 'a', title: 'Call home', remind_at: ist('2026-10-21T10:29:00+05:30'), recurrence: null, ntfy_topic: 'tp' },
-    { kind: 'date', id: 'b', title: 'Exam', due_at: due, advance_days: 7, ntfy_topic: 'tp' },
-    { kind: 'date', id: 'c', title: 'Exam', due_at: due, advance_days: 1, ntfy_topic: 'tp' },
-    { kind: 'date', id: 'd', title: 'Exam', due_at: due, advance_days: 0, ntfy_topic: 'tp' },
+    { kind: 'reminder', id: 'a', title: 'Call home', remind_at: ist('2026-10-21T10:29:00+05:30'), recurrence: null, bark_key: 'bk' },
+    { kind: 'date', id: 'b', title: 'Exam', due_at: due, advance_days: 7, bark_key: 'bk' },
+    { kind: 'date', id: 'c', title: 'Exam', due_at: due, advance_days: 1, bark_key: 'bk' },
+    { kind: 'date', id: 'd', title: 'Exam', due_at: due, advance_days: 0, bark_key: 'bk' },
   ]);
   assert.equal(out[0].message, 'Call home');
-  assert.equal(out[0].priority, 'high');
+  assert.equal(out[0].level, 'timeSensitive');
   assert.equal(out[0].next_remind, '');
   assert.equal(out[1].message, 'In 7 days: Exam (Tuesday, 27 Oct)');
   assert.equal(out[2].message, 'Tomorrow: Exam (Tuesday, 27 Oct)');
   assert.equal(out[3].message, 'Today: Exam');
+  assert.equal(out[3].level, 'timeSensitive');
+  assert.equal(out[2].level, 'active');
   assert.equal(out[1].occurrence, '2026-10-27');
-  assert.equal(out[1].topic, 'tp');
+  assert.equal(out[1].key, 'bk');
 });
 
-test('Compose passes an empty topic through so the workflow can skip pushing', async () => {
-  const [o] = await compose([{ kind: 'reminder', id: 'a', title: 'X', remind_at: ist('2026-10-21T10:29:00+05:30'), ntfy_topic: null }]);
-  assert.equal(o.topic, '');
+test('Compose passes an empty key through so the workflow can skip pushing', async () => {
+  const [o] = await compose([{ kind: 'reminder', id: 'a', title: 'X', remind_at: ist('2026-10-21T10:29:00+05:30'), bark_key: null }]);
+  assert.equal(o.key, '');
 });
 
 // ---------------------------------------------------------------- Judge
 const planned = [
-  { kind: 'reminder', id: '1', title: 't1', message: 'Call home', topic: 't', next_remind: '', occurrence: '', adv: 0 },
-  { kind: 'reminder', id: '2', title: 't2', message: 'Water plants', topic: 't', next_remind: '', occurrence: '', adv: 0 },
-  { kind: 'date', id: '3', title: 'Exam', message: 'In 7 days: Exam (Tuesday, 27 Oct)', topic: 't', next_remind: '', occurrence: '2026-10-27', adv: 7 },
+  { kind: 'reminder', id: '1', title: 't1', message: 'Call home', key: 'k', next_remind: '', occurrence: '', adv: 0 },
+  { kind: 'reminder', id: '2', title: 't2', message: 'Water plants', key: 'k', next_remind: '', occurrence: '', adv: 0 },
+  { kind: 'date', id: '3', title: 'Exam', message: 'In 7 days: Exam (Tuesday, 27 Oct)', key: 'k', next_remind: '', occurrence: '2026-10-27', adv: 7 },
 ];
 
-test('Judge marks pushes with an ntfy answer as sent and prepares a calendar event for the rest', async () => {
+test('Judge marks pushes with a Bark answer as sent and prepares a calendar event for the rest', async () => {
   const out = await run(dispatcher, 'Judge', {
-    input: [{ id: 'n1', event: 'message' }, { error: { httpCode: '429', message: 'too many requests' } }, { id: 'n3', event: 'message' }],
+    input: [
+      { statusCode: 200, headers: {}, body: { code: 200, message: 'success' } },
+      { statusCode: 429, headers: { 'retry-after': '30' }, body: { code: 429, message: 'too many requests' } },
+      { statusCode: 200, headers: {}, body: { code: 200, message: 'success' } },
+    ],
     nodes: { Compose: planned },
   });
   assert.deepEqual(out.map((o) => o.ok), [true, false, true]);
   assert.equal(out[0].backup_body, null);
   assert.equal(out[0].push_error, '');
-  assert.equal(out[1].push_error, '429 - too many requests');
+  assert.equal(out[1].push_error, 'HTTP 429 (code 429): too many requests [retry-after 30]');
   const b = out[1].backup_body;
   assert.equal(b.summary, '\u23F0 Water plants');
   // 10:30 now, so the next whole minute at least two minutes away is 10:32.
@@ -115,11 +121,22 @@ test('Judge marks pushes with an ntfy answer as sent and prepares a calendar eve
   assert.deepEqual(b.reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] });
 });
 
-test('Judge treats the no-topic path (items passed straight on) as failed and uses the date icon for dates', async () => {
-  const noTopic = planned.map((p) => ({ ...p, topic: '' }));
-  const out = await run(dispatcher, 'Judge', { input: noTopic, nodes: { Compose: noTopic } });
+test('Judge also copes with a network error and with an answer that is not JSON', async () => {
+  const out = await run(dispatcher, 'Judge', {
+    input: [{ error: { httpCode: '500', message: 'boom' } }, { statusCode: 502, headers: {}, body: '<html>Bad gateway</html>' }, { statusCode: 200, headers: {}, body: { code: 400, message: 'device key not found' } }],
+    nodes: { Compose: planned },
+  });
   assert.deepEqual(out.map((o) => o.ok), [false, false, false]);
-  assert.equal(out[0].push_error, 'no ntfy_topic is set in jarvis.settings');
+  assert.equal(out[0].push_error, '500 - boom');
+  assert.equal(out[1].push_error, 'HTTP 502: <html>Bad gateway</html>');
+  assert.equal(out[2].push_error, 'HTTP 200 (code 400): device key not found');
+});
+
+test('Judge treats the no-key path (items passed straight on) as failed and uses the date icon for dates', async () => {
+  const noKey = planned.map((p) => ({ ...p, key: '' }));
+  const out = await run(dispatcher, 'Judge', { input: noKey, nodes: { Compose: noKey } });
+  assert.deepEqual(out.map((o) => o.ok), [false, false, false]);
+  assert.equal(out[0].push_error, 'no bark_key is set in jarvis.settings');
   assert.equal(out[2].backup_body.summary, '\uD83D\uDCC5 In 7 days: Exam (Tuesday, 27 Oct)');
 });
 

@@ -1,6 +1,6 @@
 # Jarvis: Personal Assistant Plan
 
-Status: M0, M1 and M2 complete; M3 (reminder engine) built, in testing on the real services. Everything below runs on free tiers, no card. M0 results are in [M0-checklist.md](M0-checklist.md); the reasoning behind the choices is in [decisions.md](decisions.md).
+Status: M0, M1 and M2 complete; M3 (reminder engine) built, M3.1 (push through Bark instead of ntfy) in testing on the real services. Everything below runs on free tiers, no card. M0 results are in [M0-checklist.md](M0-checklist.md); the reasoning behind the choices is in [decisions.md](decisions.md).
 
 ## 1. Goal
 
@@ -17,7 +17,7 @@ A personal assistant I can talk or type to from my iPhone. It keeps reminders, t
 | LLM | Gemini free tier (primary), Groq free tier (fallback) | Tested in M0: `gemini-3.6-flash` and Groq `openai/gpt-oss-20b` both returned valid JSON. Retry on HTTP 429. |
 | Speech to text | Whisper on Groq free tier | Browser records audio, n8n transcribes. |
 | Text to speech | Browser `speechSynthesis` | No cost. |
-| Push alerts | ntfy (free iOS app), called from n8n | Works, but ntfy.sh answered "too many requests" to n8n on Render until its daily reset. Backup (decided in M3): when a push fails, Jarvis creates a Google Calendar event that rings the phone instead, so there is still one alert. |
+| Push alerts | Bark (free iPhone app), called from n8n; Google Calendar event as the backup | Replaced ntfy in M3.1: ntfy.sh refused requests from Render's shared address. |
 | iPhone integration | Siri Shortcuts | Open app, speak reminders, sync with iOS Reminders. |
 | Weather | Open-Meteo | No API key. |
 | Email | Gmail via n8n, two accounts (personal, college) | Both connected in M0 through one Google Cloud app. See section 5. |
@@ -27,7 +27,7 @@ Render free limits to design around: sleeps after 15 min without traffic, 750 fr
 ## 3. Data model (Supabase, schema `jarvis`)
 
 - `spaces`: personal, college, and more later (internships, projects).
-- `items`: one table for reminders, tasks, dates, habits, ideas. Fields: id, type, title, body, space, tags[], status, due_at, remind_at, recurrence, advance_days[], last_notified_at, next_attempt_at, ios_reminder_ref, created_at, updated_at. `alert_log` records which advance alerts of a date were sent; `settings` holds small values such as `home_location` and `ntfy_topic`.
+- `items`: one table for reminders, tasks, dates, habits, ideas. Fields: id, type, title, body, space, tags[], status, due_at, remind_at, recurrence, advance_days[], last_notified_at, next_attempt_at, ios_reminder_ref, created_at, updated_at. `alert_log` records which advance alerts of a date were sent; `settings` holds small values such as `home_location` and `bark_key`.
 - `habit_logs`: habit_id, date, done.
 - `study_logs`: subject, minutes, date, space.
 - `email_rules`: account, sender or domain, label (important / normal / promo), source (user or llm).
@@ -63,7 +63,7 @@ v4 web: page and price watching, topic digests, "look this up" tasks.
 - Privacy: free LLM tiers may use submitted data for improvement. Send only sender, subject and a short snippet. Never send full bodies.
 
 ### Reliability
-- Alerts must not depend on one free service. Dual path: push (ntfy, with a Google Calendar event as the backup when a push fails) plus iOS Reminders.
+- Alerts must not depend on one free service. Dual path: push (Bark, with a Google Calendar event as the backup when a push fails) plus iOS Reminders.
 - Pinger keeps n8n awake so schedules fire. Supabase free projects can pause after inactivity, and regular scheduled queries should prevent it (verify).
 - Webhook protected by a secret token. Secrets stay out of git, and out of exported workflows (the export script checks).
 
@@ -95,7 +95,8 @@ Each milestone ends with a commit and a working demo.
   - Decisions and M0 results written down; copy of the OAuth pages in `site/`.
   - Done when: all of this is committed, migration 002 is applied, and the M0 test workflows are exported. See [M1-checklist.md](M1-checklist.md).
 - [x] **M2: Chat brain (built, see docs/M2-checklist.md).** Webhook, LLM intent router returning structured JSON, handlers for tasks, reminders, dates, weather, spaces.
-- [x] **M3: Reminder engine (built, see docs/M3-checklist.md).** A dispatcher checks every minute (starting up to a minute early so alerts land on time) and pushes due reminders and date alerts through ntfy. Dates alert at 9 AM a week before, a day before and on the day. If a push fails, a Google Calendar event replaces it. Mark M3 as fully done after the checklist's real-service tests pass.
+- [x] **M3: Reminder engine (built, see docs/M3-checklist.md).** A dispatcher checks every minute (starting up to a minute early so alerts land on time) and pushes due reminders and date alerts (through ntfy at first, Bark from M3.1). Dates alert at 9 AM a week before, a day before and on the day. If a push fails, a Google Calendar event replaces it. Mark M3 as fully done after the checklist's real-service tests pass.
+- [x] **M3.1: Push through Bark (built, see docs/M3.1-checklist.md).** Bark replaces ntfy; everything else in M3 is unchanged. Mark M3 and M3.1 done after the checklist's real-service tests pass.
 - [ ] **M4: Frontend PWA.** Chat plus tabs (Today, Tasks, Reminders), manifest, Home Screen install, hosting.
 - [ ] **M5: Voice and Siri.** Mic to Whisper, spoken replies, "Wake up Jarvis" shortcut, "Jarvis reminders" shortcut.
 - [ ] **M6: iOS Reminders sync.** Two-way Shortcut sync and the voice "done" shortcut.
@@ -107,7 +108,7 @@ Each milestone ends with a commit and a working demo.
 
 ## 8. Open questions
 
-1. ~~Backup alert channel~~ Decided in M3: a Google Calendar event, created only when an ntfy push fails (no Telegram).
+1. ~~Backup alert channel~~ Decided in M3: a Google Calendar event, created only when a push fails (no Telegram).
 2. Which spaces beyond personal and college?
 3. Preferred morning briefing time? (Stored in `settings` once decided.)
 4. Which habits and study subjects to start with?

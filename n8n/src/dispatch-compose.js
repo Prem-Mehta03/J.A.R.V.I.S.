@@ -9,8 +9,7 @@ for (const item of $input.all()) {
   if (!r || !r.kind || !r.id) continue;
   let title;
   let message;
-  let priority = 'default';
-  let tags = 'alarm_clock';
+  let level = 'active'; // Bark levels: active, timeSensitive (shows through Focus), passive
   let nextRemind = '';
   let occurrence = '';
   let adv = 0;
@@ -18,7 +17,7 @@ for (const item of $input.all()) {
   if (r.kind === 'reminder') {
     title = 'Reminder';
     message = r.title;
-    priority = 'high';
+    level = 'timeSensitive';
     if (r.recurrence) {
       const next = nextOccurrence(r.recurrence, new Date(r.remind_at), now);
       if (next) nextRemind = next.toISOString();
@@ -29,15 +28,14 @@ for (const item of $input.all()) {
     occurrence = isoIst(startOfIstDay(due)).slice(0, 10);
     const d = toIst(due);
     const dateText = `${DAY_NAMES[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()].slice(0, 3)}`;
-    tags = 'calendar';
     title = 'Important date';
-    if (adv === 0) { message = `Today: ${r.title}`; priority = 'high'; }
+    if (adv === 0) { message = `Today: ${r.title}`; level = 'timeSensitive'; }
     else if (adv === 1) message = `Tomorrow: ${r.title} (${dateText})`;
     else message = `In ${adv} days: ${r.title} (${dateText})`;
   }
   out.push({
     json: {
-      kind: r.kind, id: r.id, topic: r.ntfy_topic || '', title, message: String(message).slice(0, 500), priority, tags,
+      kind: r.kind, id: r.id, key: r.bark_key || '', title, message: String(message).slice(0, 500), level,
       next_remind: nextRemind, occurrence, adv,
     },
   });

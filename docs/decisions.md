@@ -64,3 +64,13 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **A failed push is retried every 5 minutes**, not every minute, so a rate-limited ntfy is not hammered.
 - **A reminder that has fired stays open** until marked done or cancelled (M6 adds the "done" shortcut).
 - **The ntfy topic lives in `jarvis.settings`**, not in the workflow, so exported workflows contain no secret.
+
+## Bark replaces ntfy (Oct 20, M3.1)
+
+- **Why:** ntfy.sh kept answering "too many requests" to n8n on Render, including with an account token. Render's free servers share addresses with other people, so the limit was being used up by others. A push service we can't rely on is no use for reminders.
+- **Bark** is a free iPhone app that sends through Apple's push system. A push is one HTTP request to `https://api.day.app/push` with the device key in the body. It was tested by hand from Render and worked. Pushbullet was considered and dropped (no longer in the App Store); Slack is the fallback if Bark ever fails.
+- **Levels:** reminders and "today" date alerts use Bark's `timeSensitive` level (shows through Focus modes); advance date alerts use `active`. All pushes are grouped under "Jarvis" in the app.
+- **The device key is a secret.** It lives in `jarvis.settings` (`bark_key`), never in a workflow file or git. The export script now refuses any workflow with `api.day.app/<key>` in it.
+- **Unchanged:** the Google Calendar backup when a push fails, one alert per reminder, retries every 5 minutes, and `last_push_error` in the settings table.
+- **Risks to watch:** `api.day.app` is a public server run by Bark's author, with no stated limits or uptime promise. If it ever fails, the Calendar backup covers reminders, and Bark can be self-hosted or replaced.
+- ntfy settings (`ntfy_topic`) are removed by migration 005.

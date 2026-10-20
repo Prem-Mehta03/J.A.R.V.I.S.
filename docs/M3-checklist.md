@@ -1,5 +1,7 @@
 # M3: Reminder engine
 
+> **Superseded in part by [M3.1](M3.1-checklist.md).** ntfy was replaced by Bark, because ntfy.sh kept refusing requests from Render. Where this page says ntfy (the topic in step 2, the ntfy node, the tests in step 5 and the troubleshooting in step 6), follow M3.1 instead. Everything else here still applies.
+
 Goal: reminders and important dates actually alert you, once.
 
 - A new workflow, **02 Reminder Dispatcher**, runs every minute and sends push alerts through ntfy. It starts up to a minute early on purpose, so the push lands on time instead of a minute late.
@@ -50,7 +52,7 @@ On the iPhone, make sure that Google account's calendar is switched on: **Settin
 
 1. In your Supabase credential, set **Maximum Number of Connections** to 3 or 4 (the default allows far more than the free pooler likes). Optional but safer.
 2. Import `n8n/workflows/02-reminder-dispatcher.json`.
-3. Open each of the database nodes (**Claim due alerts**, **Record outcome**, **Find stale repeats**, **Save stale**) and choose your Supabase credential. On **Backup event**, choose **Google Calendar**.
+3. Open each of the database nodes (**Claim due alerts**, **Record outcome**, **Find stale repeats**, **Save stale**) and choose your Supabase credential. On **ntfy**, choose your ntfy credential (a Header Auth credential with Name `Authorization` and Value `Bearer tk_...`, your ntfy access token; create it as **ntfy token** if it doesn't exist). Without it ntfy treats Jarvis as anonymous and the shared Render address gets rate limited. On **Backup event**, choose **Google Calendar**.
 4. **Save**, then **Activate**.
 
 If you imported an earlier version of this workflow, deactivate and delete it first.
@@ -71,7 +73,7 @@ select value from jarvis.settings where key = 'last_push_error';
 ```
 
 - `no ntfy_topic is set in jarvis.settings`: run the topic `update` from step 2.
-- `429 - ...too many requests`: ntfy rate limited the shared Render address. The Calendar backup covers it, and it clears after the daily reset.
+- `HTTP 429 (code ...): ...`: ntfy refused for too many requests. The text after the code says which limit (requests per minute, or a daily message quota). Check that the **ntfy** node has your token credential. The Calendar backup covers it meanwhile. Send me the whole line.
 - Anything else: send it to me.
 
 ## 7. Things to know

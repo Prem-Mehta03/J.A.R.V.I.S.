@@ -209,11 +209,11 @@ dl as (
   returning item_id, occurrence, advance_days
 )
 select 'reminder' as kind, r.id, r.title, r.remind_at, null::timestamptz as due_at, r.recurrence, null::int as advance_days,
-       (select value #>> '{}' from jarvis.settings where key = 'ntfy_topic') as ntfy_topic
+       (select value #>> '{}' from jarvis.settings where key = 'bark_key') as bark_key
 from r
 union all
 select 'date', d.id, d.title, null, d.due_at, null, d.adv,
-       (select value #>> '{}' from jarvis.settings where key = 'ntfy_topic')
+       (select value #>> '{}' from jarvis.settings where key = 'bark_key')
 from d join dl on dl.item_id = d.id and dl.occurrence = d.occurrence and dl.advance_days = d.adv"""
 
 RECORD_SQL = """with a as (
@@ -266,22 +266,17 @@ dispatcher_nodes = [
 
     node("Compose", "n8n-nodes-base.code", 2, [480, 200], {"jsCode": code("dispatch-compose.js")}),
 
-    if_node("Has topic?", [700, 200], "={{ $json.topic !== '' }}"),
+    if_node("Has key?", [700, 200], "={{ $json.key !== '' }}"),
 
-    node("ntfy", "n8n-nodes-base.httpRequest", 4.5, [920, 120], {
+    # Bark (iPhone app) sends the push. The device key comes from jarvis.settings, so it is never inside this file.
+    node("Bark", "n8n-nodes-base.httpRequest", 4.5, [920, 120], {
         "method": "POST",
-        "url": "=https://ntfy.sh/{{ $json.topic }}",
-        "sendHeaders": True,
-        "headerParameters": {"parameters": [
-            {"name": "Title", "value": "={{ $json.title }}"},
-            {"name": "Priority", "value": "={{ $json.priority }}"},
-            {"name": "Tags", "value": "={{ $json.tags }}"},
-        ]},
+        "url": "https://api.day.app/push",
         "sendBody": True,
-        "contentType": "raw",
-        "rawContentType": "text/plain; charset=utf-8",
-        "body": "={{ $json.message }}",
-        "options": {"timeout": 20000},
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ device_key: $json.key, title: $json.title, body: $json.message, level: $json.level, group: 'Jarvis' }) }}",
+        # Keep Bark's own answer (status and body) even when it refuses, so the reason can be recorded.
+        "options": {"timeout": 20000, "response": {"response": {"fullResponse": True, "neverError": True}}},
     }, onError="continueRegularOutput"),
 
     node("Judge", "n8n-nodes-base.code", 2, [1140, 200], {"jsCode": code("dispatch-judge.js")}),
@@ -327,9 +322,9 @@ dispatcher_nodes = [
 dispatcher_connections = {
     "Every minute": link(["Claim due alerts", "Find stale repeats"]),
     "Claim due alerts": link(["Compose"]),
-    "Compose": link(["Has topic?"]),
-    "Has topic?": link(["ntfy"], ["Judge"]),
-    "ntfy": link(["Judge"]),
+    "Compose": link(["Has key?"]),
+    "Has key?": link(["Bark"], ["Judge"]),
+    "Bark": link(["Judge"]),
     "Judge": link(["Sent?"]),
     "Sent?": link(["Record outcome"], ["Backup event"]),
     "Backup event": link(["Judge backup"]),

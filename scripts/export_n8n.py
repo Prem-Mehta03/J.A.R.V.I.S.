@@ -43,6 +43,7 @@ SECRET_PATTERNS = [
     ("Google OAuth client secret", re.compile(r"GOCSPX-[A-Za-z0-9_\-]{10,}")),
     ("long hex string (could be the Jarvis token)", re.compile(r"\b[0-9a-fA-F]{40,}\b")),
     ("ntfy topic written into a URL", re.compile(r"ntfy\.sh/[A-Za-z0-9_\-]{8,}")),
+    ("Bark device key written into a URL", re.compile(r"api\.day\.app/(?!push\b)[A-Za-z0-9_\-]{10,}")),
     ("private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
 ]
 
