@@ -60,6 +60,7 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Calendar permission:** `calendar.events` only. It is a sensitive scope, but an unverified app is fine for one user (the unverified warning, and a cap of 100 new users that never matters). Re-check the token around 2026-10-28 together with Gmail.
 - **A dispatcher workflow runs every minute** and never stores its successful runs, to keep the database small. If the service was asleep, alerts up to a day late are still sent; older repeating reminders are moved on silently.
 - **Date alerts go out at 9 AM India time**: a week before, a day before (or whatever was asked) and on the day. An alert whose time was already past when the date was created is skipped.
+- **Reminders are claimed up to a minute early.** The dispatcher runs once a minute and a push takes a few seconds, so claiming exactly on time made alerts arrive about a minute late. Now a push arrives between 0 and 60 seconds before the set time and never after it (apart from a few seconds of delivery). Date alerts at 9 AM are not affected.
 - **A failed push is retried every 5 minutes**, not every minute, so a rate-limited ntfy is not hammered.
 - **A reminder that has fired stays open** until marked done or cancelled (M6 adds the "done" shortcut).
 - **The ntfy topic lives in `jarvis.settings`**, not in the workflow, so exported workflows contain no secret.

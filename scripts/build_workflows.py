@@ -179,8 +179,9 @@ r as (
   where id in (
     select id from jarvis.items
     where type = 'reminder' and status = 'open'
-      and remind_at <= now() and remind_at > now() - interval '1 day'
-      and (last_notified_at is null or last_notified_at < remind_at)
+      -- The check runs once a minute and a push takes a few seconds, so it starts up to a minute early: the alert arrives on time.
+      and remind_at <= now() + interval '1 minute' and remind_at > now() - interval '1 day'
+      and (last_notified_at is null or last_notified_at < remind_at - interval '2 minutes')
       and (next_attempt_at is null or next_attempt_at <= now())
     order by remind_at
     limit 10
