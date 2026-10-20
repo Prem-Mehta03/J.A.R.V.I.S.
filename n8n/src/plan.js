@@ -20,7 +20,7 @@ function finish(plan) {
       plan: Object.assign(
         { ok: true, intent: 'clarify', action: 'reply', sql: null, params: [], say: null, error: null, provider: null, data: {} },
         plan,
-        { ctx: { now_iso: ctx.now_iso, source: ctx.source, home_location: build.home_location || null, calendar_backup: build.calendar_backup !== false, spaces } },
+        { ctx: { now_iso: ctx.now_iso, source: ctx.source, home_location: build.home_location || null, spaces } },
       ),
     },
   }];
@@ -94,7 +94,7 @@ const CLOSE_SQL = `with matches as (
 updated as (
   update jarvis.items set status = $3
   where id in (select id from matches) and (select count(*) from matches) = 1
-  returning id, type, title, space, calendar_event_id
+  returning id, type, title, space
 )
 select (select count(*) from matches) as match_count,
        (select json_agg(json_build_object('id', m.id, 'title', m.title, 'type', m.type)) from (select * from matches limit 5) m) as candidates,

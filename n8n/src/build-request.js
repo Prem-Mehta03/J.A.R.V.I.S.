@@ -103,7 +103,6 @@ return [{
     groq_body: groqBody,
     spaces,
     home_location: home,
-    calendar_backup: db.calendar_backup !== false,
     db_ok: !db.error,
   },
 }];
