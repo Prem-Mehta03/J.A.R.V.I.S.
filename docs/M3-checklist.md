@@ -62,7 +62,19 @@ If you imported an earlier version of this workflow, deactivate and delete it fi
 3. **Test the backup.** In n8n open the **ntfy** node and temporarily change its URL host to `https://ntfy.invalid/{{ $json.topic }}`. Create another reminder for 3 minutes ahead. Expect: no ntfy push, but a Google Calendar event about two minutes after the attempt, and the Calendar alert on your phone. Then **undo your change** in the ntfy node.
 4. In Supabase: `select title, remind_at, last_notified_at from jarvis.items order by created_at desc;` should show the reminders as notified.
 
-## 6. Things to know
+## 6. If an alert doesn't come through
+
+The reason the last push failed is saved. Run this in Supabase:
+
+```sql
+select value from jarvis.settings where key = 'last_push_error';
+```
+
+- `no ntfy_topic is set in jarvis.settings`: run the topic `update` from step 2.
+- `429 - ...too many requests`: ntfy rate limited the shared Render address. The Calendar backup covers it, and it clears after the daily reset.
+- Anything else: send it to me.
+
+## 7. Things to know
 
 - **Timing:** a push arrives between 0 and 60 seconds before the set time, and not after it (apart from a few seconds of delivery).
 - **Late alerts:** if the service was asleep, alerts up to a day late still go out. Older repeating reminders are moved to their next time without an alert.
@@ -72,7 +84,7 @@ If you imported an earlier version of this workflow, deactivate and delete it fi
 - The dispatcher doesn't keep its successful runs in n8n's history, on purpose (one run a minute would fill the database). Failures are kept.
 - Re-check the Calendar and Gmail connections around 2026-10-28.
 
-## 7. Not tested by me
+## 8. Not tested by me
 
 I tested the code with unit tests and a local n8n run against a mock ntfy and a mock Google Calendar: due reminders and date alerts sent once, early claiming without duplicates, a repeating reminder moved on, a stale one skipped, a failed push replaced by one Calendar event, both channels failing and then recovering, a missing topic handled. I haven't called the real Google Calendar, so **step 5.3 is the first real check** of the event format.
 

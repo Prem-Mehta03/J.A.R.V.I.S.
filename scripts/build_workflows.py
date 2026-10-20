@@ -233,8 +233,16 @@ c as (
   where $2 = 'date' and not $3::boolean
     and item_id = $1::uuid and occurrence = nullif($5, '')::date and advance_days = $6::int
   returning 1
+),
+d as (
+  -- remember why the last push failed, so it can be read in the settings table
+  insert into jarvis.settings (key, value)
+  select 'last_push_error', jsonb_build_object('at', now(), 'item', $1, 'error', $7::text)
+  where $7 <> ''
+  on conflict (key) do update set value = excluded.value
+  returning 1
 )
-select (select count(*) from a) as rolled, (select count(*) from b) as retry_reminder, (select count(*) from c) as retry_date"""
+select (select count(*) from a) as rolled, (select count(*) from b) as retry_reminder, (select count(*) from c) as retry_date, (select count(*) from d) as error_saved"""
 
 STALE_SQL = """select id, remind_at, recurrence from jarvis.items
 where type = 'reminder' and status = 'open' and recurrence is not null and remind_at <= now() - interval '1 day'
@@ -297,7 +305,7 @@ dispatcher_nodes = [
     node("Record outcome", "n8n-nodes-base.postgres", 2.7, [2020, 200], {
         "operation": "executeQuery",
         "query": RECORD_SQL,
-        "options": {"queryReplacement": "={{ [$json.id, $json.kind, String($json.ok), $json.next_remind || '', $json.occurrence || '', String($json.adv || 0)] }}"},
+        "options": {"queryReplacement": "={{ [$json.id, $json.kind, String($json.ok), $json.next_remind || '', $json.occurrence || '', String($json.adv || 0), $json.push_error || ''] }}"},
     }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
 
     # A repeating reminder whose time passed more than a day ago (the service was asleep) is moved on without a stale alert.

@@ -100,11 +100,13 @@ const planned = [
 
 test('Judge marks pushes with an ntfy answer as sent and prepares a calendar event for the rest', async () => {
   const out = await run(dispatcher, 'Judge', {
-    input: [{ id: 'n1', event: 'message' }, { error: { message: '429' } }, { id: 'n3', event: 'message' }],
+    input: [{ id: 'n1', event: 'message' }, { error: { httpCode: '429', message: 'too many requests' } }, { id: 'n3', event: 'message' }],
     nodes: { Compose: planned },
   });
   assert.deepEqual(out.map((o) => o.ok), [true, false, true]);
   assert.equal(out[0].backup_body, null);
+  assert.equal(out[0].push_error, '');
+  assert.equal(out[1].push_error, '429 - too many requests');
   const b = out[1].backup_body;
   assert.equal(b.summary, '\u23F0 Water plants');
   // 10:30 now, so the next whole minute at least two minutes away is 10:32.
@@ -114,8 +116,10 @@ test('Judge marks pushes with an ntfy answer as sent and prepares a calendar eve
 });
 
 test('Judge treats the no-topic path (items passed straight on) as failed and uses the date icon for dates', async () => {
-  const out = await run(dispatcher, 'Judge', { input: planned, nodes: { Compose: planned } });
+  const noTopic = planned.map((p) => ({ ...p, topic: '' }));
+  const out = await run(dispatcher, 'Judge', { input: noTopic, nodes: { Compose: noTopic } });
   assert.deepEqual(out.map((o) => o.ok), [false, false, false]);
+  assert.equal(out[0].push_error, 'no ntfy_topic is set in jarvis.settings');
   assert.equal(out[2].backup_body.summary, '\uD83D\uDCC5 In 7 days: Exam (Tuesday, 27 Oct)');
 });
 
