@@ -111,7 +111,7 @@ nodes = [
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.gemini_body) }}",
-        "options": {"timeout": 60000},
+        "options": {"timeout": 25000},
     }, credentials={"httpHeaderAuth": {"id": "", "name": "Gemini key"}}, onError="continueRegularOutput"),
 
     if_node("Gemini answered?", [1320, 200], GEMINI_OK),
@@ -124,7 +124,7 @@ nodes = [
         "sendBody": True,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Build request').first().json.groq_body) }}",
-        "options": {"timeout": 60000},
+        "options": {"timeout": 30000},
     }, credentials={"httpHeaderAuth": {"id": "", "name": "Groq key"}}, onError="continueRegularOutput"),
 
     node("Plan", "n8n-nodes-base.code", 2, [1760, 300], {"jsCode": code("plan.js")}),

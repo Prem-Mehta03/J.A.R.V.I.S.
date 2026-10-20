@@ -1,6 +1,12 @@
 # M4: The app (PWA)
 
-Goal: an app on your Home Screen with Today, Ask (chat), Tasks, Reminders and Dates. Tap an item to mark it done or cancel it.
+Goal: an app on your Home Screen. It opens on the chat (with the AI-core orb); Today, Tasks, Reminders, Dates and your spaces are in the menu at the top left. Tap an item to mark it done or cancel it.
+
+Design: from Stitch ("Warm Luminescence", dark with amber). Fonts and icons are built in, nothing loads from outside, so it works offline.
+
+## Logo
+
+The Home Screen icon is the amber orbit mark from Stitch (`frontend/icons/`). `icon.svg` is the full-square version iOS rounds itself; `logo-rounded.svg` and `logo-mark.svg` are the original rounded and transparent versions. If the Home Screen still shows the old icon, remove the app and add it again (iOS caches the icon).
 
 ## 1. Update the repo
 
@@ -33,7 +39,9 @@ You should see `ok: True` and your items.
 
 ## 5. Test
 
-- Ask tab: "remind me in 10 minutes to stretch". Then Reminders tab shows it.
+- Chat: "remind me in 10 minutes to stretch". Then Reminders (menu, top left) shows it.
+- The orb: calm while idle, brighter with ripples while you type, fast swirl while Jarvis thinks.
+- Spaces in the menu filter every list. "Add space" and "Add date" open the chat with a starter sentence.
 - Tap an item, **Mark done**: it disappears and stays gone after reopening.
 - Turn on airplane mode, reopen: last list shows with a "Showing the list from ..." note.
 - Wrong token: you get "The token was not accepted."

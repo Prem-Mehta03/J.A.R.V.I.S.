@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Core Radial Glow for Transparent Mark -->
+    <radialGradient id="transCoreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="18%" stop-color="#FFF2D1" />
+      <stop offset="42%" stop-color="#FFB84D" />
+      <stop offset="72%" stop-color="#FF8A1F" />
+      <stop offset="100%" stop-color="#FF6B00" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Deep Ambient Core Aura for Transparent Mark -->
+    <radialGradient id="transAuraGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFB84D" stop-opacity="0.55" />
+      <stop offset="50%" stop-color="#FF8A1F" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#FF7A00" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Arc Gradients -->
+    <linearGradient id="transGoldGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEBB8" />
+      <stop offset="50%" stop-color="#FFB84D" />
+      <stop offset="100%" stop-color="#FF8A1F" />
+    </linearGradient>
+
+    <linearGradient id="transGoldGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A1F" />
+      <stop offset="60%" stop-color="#FFB84D" />
+      <stop offset="100%" stop-color="#FFF3D6" />
+    </linearGradient>
+
+    <linearGradient id="transAmberSubtle" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF7A00" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#FFB84D" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#FFEAA7" stop-opacity="0.95" />
+    </linearGradient>
+  </defs>
+
+  <!-- Transparent Background (No rect) -->
+
+  <!-- Ambient Golden Aura behind the AI core -->
+  <circle cx="256" cy="256" r="215" fill="url(#transAuraGlow)" />
+
+  <!-- Concentric Orbital Arcs -->
+  <g transform="rotate(-15 256 256)">
+
+    <!-- Layer 4: Outer Halo Ring -->
+    <circle cx="256" cy="256" r="176" fill="none" stroke="#FF9D2E" stroke-opacity="0.28" stroke-width="3.5" stroke-dasharray="14 18 70 24 190 36" stroke-linecap="round" />
+    
+    <!-- Outer Arc A (Top-Right Sweeping Wave) -->
+    <path d="M 256 80 A 176 176 0 0 1 432 256" fill="none" stroke="url(#transGoldGrad1)" stroke-width="8" stroke-linecap="round" />
+    <!-- Outer Arc B (Bottom-Left Echo) -->
+    <path d="M 256 432 A 176 176 0 0 1 115 362" fill="none" stroke="url(#transGoldGrad2)" stroke-width="6" stroke-linecap="round" />
+    <!-- Outer Satellite Pulse Dots -->
+    <circle cx="432" cy="256" r="5.5" fill="#FFECC2" />
+    <circle cx="115" cy="362" r="4" fill="#FFB84D" />
+
+    <!-- Layer 3: Mid-Orbit Concentric Neural Bands -->
+    <path d="M 127 256 A 129 129 0 0 1 347 165" fill="none" stroke="url(#transGoldGrad2)" stroke-width="9.5" stroke-linecap="round" />
+    <path d="M 385 256 A 129 129 0 0 1 198 375" fill="none" stroke="url(#transAmberSubtle)" stroke-width="7" stroke-linecap="round" />
+    <circle cx="347" cy="165" r="5" fill="#FFFFFF" />
+
+    <!-- Layer 2: Tight Orbital Gyro Arc (Tilted Listening Ring) -->
+    <g transform="rotate(42 256 256)">
+      <ellipse cx="256" cy="256" rx="90" ry="48" fill="none" stroke="url(#transGoldGrad1)" stroke-width="7.5" stroke-dasharray="144 40 72 32" stroke-linecap="round" />
+      <circle cx="346" cy="256" r="4.5" fill="#FFECC2" />
+    </g>
+
+    <!-- Layer 1: Close Inner Resonant Shell -->
+    <g transform="rotate(-30 256 256)">
+      <ellipse cx="256" cy="256" rx="60" ry="60" fill="none" stroke="#FFB84D" stroke-width="5.5" stroke-dasharray="90 32 145 28" stroke-linecap="round" />
+    </g>
+
+    <!-- Center Bright AI Singularity Core -->
+    <circle cx="256" cy="256" r="50" fill="url(#transCoreGlow)" />
+    <circle cx="256" cy="256" r="24" fill="#FFECC2" />
+    <circle cx="256" cy="256" r="15" fill="#FFFFFF" />
+
+    <!-- Concentric Sensor Points / Telemetry Pips -->
+    <circle cx="256" cy="178" r="3" fill="#FFC978" opacity="0.9" />
+    <circle cx="256" cy="334" r="3" fill="#FF9D2E" opacity="0.9" />
+    <circle cx="178" cy="256" r="3" fill="#FFB84D" opacity="0.9" />
+    <circle cx="334" cy="256" r="3" fill="#FFC978" opacity="0.9" />
+
+  </g>
+</svg>

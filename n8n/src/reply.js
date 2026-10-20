@@ -62,18 +62,21 @@ const WEATHER_WORDS = {
   71: 'snowy', 73: 'snowy', 75: 'heavy snow', 77: 'snowy', 80: 'rain showers', 81: 'rain showers', 82: 'heavy rain showers',
   85: 'snow showers', 86: 'snow showers', 95: 'thunderstorms', 96: 'thunderstorms with hail', 99: 'thunderstorms with hail',
 };
+// One quick retry: the free weather service sometimes refuses a request from a shared address.
+async function getJson(url) {
+  try { return await helpers.httpRequest({ method: 'GET', url, json: true, timeout: 12000 }); }
+  catch (first) {
+    await new Promise((r) => setTimeout(r, 1500));
+    return await helpers.httpRequest({ method: 'GET', url, json: true, timeout: 12000 });
+  }
+}
 async function weatherReply() {
   const place = plan.data.place;
   const home = plan.ctx.home_location;
   let loc = null;
   try {
     if (place) {
-      const g = await helpers.httpRequest({
-        method: 'GET',
-        url: `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en&format=json`,
-        json: true,
-        timeout: 15000,
-      });
+      const g = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en&format=json`);
       const r = g && g.results && g.results[0];
       if (!r) return done({ reply: `I couldn't find a place called ${place}.` });
       loc = { name: r.name, lat: Number(r.latitude), lon: Number(r.longitude) };
@@ -84,16 +87,12 @@ async function weatherReply() {
     }
     if (!(Math.abs(loc.lat) <= 90 && Math.abs(loc.lon) <= 180)) throw new Error('bad coordinates');
 
-    const f = await helpers.httpRequest({
-      method: 'GET',
-      url: 'https://api.open-meteo.com/v1/forecast'
+    const f = await getJson(
+      'https://api.open-meteo.com/v1/forecast'
         + `?latitude=${loc.lat}&longitude=${loc.lon}`
         + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m'
         + '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code'
-        + '&timezone=Asia%2FKolkata&forecast_days=2',
-      json: true,
-      timeout: 15000,
-    });
+        + '&timezone=Asia%2FKolkata&forecast_days=2');
     const tomorrow = plan.data.scope === 'tomorrow';
     const i = tomorrow ? 1 : 0;
     const daily = f.daily || {};
@@ -116,7 +115,7 @@ async function weatherReply() {
     }
     return done({ reply, weather: info });
   } catch (e) {
-    return done({ ok: false, reply: "I couldn't get the weather right now.", error: 'weather_error' });
+    return done({ ok: false, reply: "I couldn't get the weather right now.", error: 'weather_error', detail: String((e && e.message) || e).slice(0, 200) });
   }
 }
 

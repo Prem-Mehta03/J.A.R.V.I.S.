@@ -173,3 +173,8 @@ export function timeAgo(then, now) {
   if (s < 86400) return `${Math.round(s / 3600)} hours ago`;
   return `${Math.round(s / 86400)} days ago`;
 }
+
+export function searchTitle(list, q) {
+  const s = String(q || '').trim().toLowerCase();
+  return s ? list.filter((e) => String((e.item || e).title).toLowerCase().includes(s)) : list;
+}

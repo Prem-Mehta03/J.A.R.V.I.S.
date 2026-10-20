@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#182234" />
+      <stop offset="60%" stop-color="#0B0F17" />
+      <stop offset="100%" stop-color="#06090E" />
+    </radialGradient>
+
+    <!-- Core Radial Glow -->
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="15%" stop-color="#FFF2D1" />
+      <stop offset="38%" stop-color="#FFB84D" />
+      <stop offset="70%" stop-color="#FF8A1F" />
+      <stop offset="100%" stop-color="#FF6B00" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Deep Ambient Core Aura -->
+    <radialGradient id="auraGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFB84D" stop-opacity="0.45" />
+      <stop offset="50%" stop-color="#FF8A1F" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#FF7A00" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Arc Gradients -->
+    <linearGradient id="goldGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFEBB8" />
+      <stop offset="50%" stop-color="#FFB84D" />
+      <stop offset="100%" stop-color="#FF8A1F" />
+    </linearGradient>
+
+    <linearGradient id="goldGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A1F" />
+      <stop offset="60%" stop-color="#FFB84D" />
+      <stop offset="100%" stop-color="#FFF3D6" />
+    </linearGradient>
+
+    <!-- Subdued Secondary Arcs -->
+    <linearGradient id="amberSubtle" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF7A00" stop-opacity="0.25" />
+      <stop offset="50%" stop-color="#FFB84D" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#FFEAA7" stop-opacity="0.9" />
+    </linearGradient>
+
+    <!-- Subtle Bevel & Rim for iOS Icon -->
+    <linearGradient id="subtleRim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14" />
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.03" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.0" />
+    </linearGradient>
+  </defs>
+
+  <!-- iOS App Icon Squircle Base (512x512, rx=115 for standard Apple squircle ratio) -->
+  <rect x="0" y="0" width="512" height="512" rx="115" fill="url(#bgGlow)" />
+  <rect x="0" y="0" width="512" height="512" rx="115" fill="none" stroke="url(#subtleRim)" stroke-width="2.5" />
+
+  <!-- Ambient Golden Aura behind the AI core -->
+  <circle cx="256" cy="256" r="210" fill="url(#auraGlow)" />
+
+  <!-- Concentric Orbital Arcs (Outer, Mid, Inner) crafted to read sharp at 60x60 -->
+  <g transform="rotate(-15 256 256)">
+
+    <!-- Layer 4: Deep Outer Halo Ring & Audio Wave Node -->
+    <circle cx="256" cy="256" r="172" fill="none" stroke="#FF9D2E" stroke-opacity="0.2" stroke-width="3" stroke-dasharray="12 16 64 20 180 32" stroke-linecap="round" />
+    
+    <!-- Outer Arc A (Top-Right Sweeping Wave) -->
+    <path d="M 256 84 A 172 172 0 0 1 428 256" fill="none" stroke="url(#goldGrad1)" stroke-width="7" stroke-linecap="round" />
+    <!-- Outer Arc B (Bottom-Left Echo) -->
+    <path d="M 256 428 A 172 172 0 0 1 118 360" fill="none" stroke="url(#goldGrad2)" stroke-width="5" stroke-linecap="round" />
+    <!-- Outer Satellite Pulse Dot -->
+    <circle cx="428" cy="256" r="5" fill="#FFECC2" />
+    <circle cx="118" cy="360" r="3.5" fill="#FFB84D" />
+
+    <!-- Layer 3: Mid-Orbit Concentric Neural Bands -->
+    <path d="M 130 256 A 126 126 0 0 1 345 167" fill="none" stroke="url(#goldGrad2)" stroke-width="8.5" stroke-linecap="round" />
+    <path d="M 382 256 A 126 126 0 0 1 200 372" fill="none" stroke="url(#amberSubtle)" stroke-width="6" stroke-linecap="round" />
+    <circle cx="345" cy="167" r="4.5" fill="#FFFFFF" />
+
+    <!-- Layer 2: Tight Orbital Gyro Arc (Tilted Listening Ring) -->
+    <g transform="rotate(42 256 256)">
+      <ellipse cx="256" cy="256" rx="88" ry="46" fill="none" stroke="url(#goldGrad1)" stroke-width="6.5" stroke-dasharray="140 38 70 30" stroke-linecap="round" />
+      <circle cx="344" cy="256" r="4" fill="#FFECC2" />
+    </g>
+
+    <!-- Layer 1: Close Inner Resonant Shell -->
+    <g transform="rotate(-30 256 256)">
+      <ellipse cx="256" cy="256" rx="58" ry="58" fill="none" stroke="#FFB84D" stroke-width="5" stroke-dasharray="85 30 140 25" stroke-linecap="round" />
+    </g>
+
+    <!-- Center Bright AI Singularity Core -->
+    <!-- Soft diffuse base -->
+    <circle cx="256" cy="256" r="48" fill="url(#coreGlow)" />
+    <!-- Intense hot center nucleus -->
+    <circle cx="256" cy="256" r="22" fill="#FFECC2" />
+    <circle cx="256" cy="256" r="14" fill="#FFFFFF" />
+
+    <!-- Concentric Sensor Points / Telemetry Pips -->
+    <circle cx="256" cy="180" r="2.5" fill="#FFC978" opacity="0.85" />
+    <circle cx="256" cy="332" r="2.5" fill="#FF9D2E" opacity="0.85" />
+    <circle cx="180" cy="256" r="2.5" fill="#FFB84D" opacity="0.85" />
+    <circle cx="332" cy="256" r="2.5" fill="#FFC978" opacity="0.85" />
+
+  </g>
+</svg>

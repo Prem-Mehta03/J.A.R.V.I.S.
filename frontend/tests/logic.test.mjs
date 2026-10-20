@@ -89,3 +89,10 @@ test('time ago wording', () => {
   assert.equal(L.timeAgo(new Date(NOW - 5 * 60000), NOW), '5 minutes ago');
   assert.equal(L.timeAgo(new Date(NOW - 3 * 3600000), NOW), '3 hours ago');
 });
+
+test('search by title', () => {
+  const list = [{ item: { title: "Mom's birthday" }, days: 3 }, { item: { title: 'Exam' }, days: 5 }];
+  assert.equal(L.searchTitle(list, 'mom').length, 1);
+  assert.equal(L.searchTitle(list, '  ').length, 2);
+  assert.equal(L.searchTitle([{ title: 'Lab report' }], 'LAB').length, 1);
+});

@@ -83,3 +83,5 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Own endpoint for lists** (`jarvis-items`) instead of asking the chat router: no language model, instant, deterministic.
 - **Offline:** the shell is cached by a service worker and the last list is kept, so the app opens with data even while Render is asleep.
 - **Strict CSP** (no inline script or style) and text-only rendering (`textContent`), so a stored title can never run as code.
+- **Redesign (Stitch, "Warm Luminescence").** Dark only, amber accent, chat first, navigation in a left drawer (no bottom tab bar, as asked). Not taken from the mockups because they were invented data: the "Jarvis Plus" card, user name, version badges, "Pay Now", the memory photo and AI insight banners. The mic button is a placeholder until M5.
+- **The orb** is a canvas particle animation (`orb.js`), no image. Modes: idle, listening (while typing, until real voice exists), thinking (waiting for the reply), replying.

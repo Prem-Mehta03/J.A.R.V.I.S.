@@ -1,6 +1,6 @@
 // Caches the app shell so the app opens instantly and offline. Data is never cached here (the app keeps its own copy).
-const CACHE = 'jarvis-shell-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'logic.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
+const CACHE = 'jarvis-shell-v3';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'logic.js', 'orb.js', 'icons.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
