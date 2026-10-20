@@ -23,7 +23,7 @@ Pass: the tables appear under the `jarvis` schema, and the `spaces` table has tw
 
 1. Push this repo to GitHub.
 2. In Render: New, then Blueprint, pick the repo, and point it at `infra/render.yaml`.
-3. Fill in the secret values it asks for (`N8N_HOST`, `N8N_WEBHOOK_URL`, and the four `DB_POSTGRESDB_*` values). `N8N_ENCRYPTION_KEY` is generated for you. Copy it somewhere safe, because losing it makes stored credentials unreadable.
+3. Fill in the secret values it asks for (`N8N_HOST`, `N8N_WEBHOOK_URL`, and the three `DB_POSTGRESDB_*` values for host, user and password). `N8N_ENCRYPTION_KEY` is generated for you. Copy it somewhere safe, because losing it makes stored credentials unreadable.
 4. First start takes a few minutes. Open the service URL and create the n8n owner account.
 5. In cron-job.org, add a job that sends a GET to `https://<your-service>.onrender.com/healthz` every 10 minutes.
 
@@ -87,21 +87,32 @@ Pass: both return valid JSON. Note the response time of each.
 
 ## Results and go / no-go
 
+Completed 2026-10-20. Outcome: **GO**.
+
 | Check | Result | Notes |
 |---|---|---|
-| Supabase schema created | | |
-| n8n stays awake with the pinger | | |
-| Webhook auth works | | |
-| Shortcut creates a Reminder and speaks | | |
-| Time-of-day automation runs locked | | |
-| Open URL opens app or Safari | | |
-| ntfy push on locked phone | | |
-| Personal Gmail connected | | |
-| College Gmail connected | | |
-| Gemini and Groq both return JSON | | |
+| Supabase schema created | Pass | Session pooler (port 5432) used from Render. n8n connected and created its own tables. |
+| n8n stays awake with the pinger | Pass | cron-job.org on `/healthz`. The first run failed with "Output too large" until the job URL was the exact `/healthz` address. |
+| Webhook auth works | Pass | `curl` with the token returned the reply. Rejection without the token was not recorded. |
+| Shortcut creates a Reminder and speaks | Pass | "Jarvis Ping" works by tap and by voice. |
+| Time-of-day automation runs locked | Pass | Ran by itself and spoke the reply. No banner was shown. Whether the reminder was added was not recorded. |
+| Open URL opens app or Safari | Not recorded | Test at the start of M5. |
+| ntfy push on locked phone | Pass, with a caveat | First runs failed with "too many requests", also when sending an account token. It worked after the daily reset (05:30 IST). Locked-phone behaviour was not recorded separately. |
+| Personal Gmail connected | Pass | 5 messages returned. Only the narrowest permission was granted. |
+| College Gmail connected | Pass | Reported working with the same OAuth app. |
+| Gemini and Groq both return JSON | Pass | Both returned `{"label":"promo"}`. Gemini `gemini-3.6-flash` used 212 thinking tokens for a 5-token answer. Groq `openai/gpt-oss-20b` took about 0.07 s. Gemini latency was not recorded. |
 
-Decisions:
-- Pinger fails or n8n sleeps anyway: consider running n8n on the laptop with a tunnel, or Oracle's free VM.
-- Automations need a prompt every time: iOS Reminders sync becomes manual, and ntfy is the primary alert.
-- College Gmail blocked: drop it from v3, or use the forwarding option if the college allows it.
-- Everything passes: move to M1 and M2.
+## What we learned
+
+- **n8n deprecations (version 2.43.8).** Use `N8N_WEBHOOK_URL` instead of `WEBHOOK_URL`. The code-node task runner timed out starting on the free instance, so `N8N_RUNNERS_GRANT_TOKEN_TTL=120` was added. The `N8N_RUNNERS_MODE` warning is ignored because the suggested fix needs a second service. The image is pinned to `2.43.8`.
+- **ntfy.sh limits.** Requests from Render's shared address were rejected with "too many requests" until the daily reset. The cause is unconfirmed (probably a shared address). Needs a backup channel.
+- **Gmail.** Moving the Google app to "In production" needed a homepage and privacy policy on an authorized domain. A GitHub Pages site verified in Search Console was accepted. n8n asks for broad Gmail permissions; only the narrowest one was ticked.
+- **Gemini thinking.** The model spends many thinking tokens on simple classification. Lower or switch off thinking, and force strict JSON, in the real classifier.
+- **Jev (TypeSafe AI)** was considered for classification and dropped because it is not free.
+
+## Carried forward
+
+- Choose a backup alert channel (M3).
+- Test whether "Wake up Jarvis" opens the Home Screen app or Safari (M5).
+- Re-check the Gmail connections around 2026-10-28 to confirm the tokens survived in production mode.
+- Tune the Gemini request (thinking budget, JSON mode) when building the classifier (M8).

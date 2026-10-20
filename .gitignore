@@ -3,5 +3,10 @@
 !.env.example
 *.credentials.json
 credentials*.json
+.n8n-api-key
+*.local
+n8n/workflows/*.raw.json
+__pycache__/
+*.pyc
 node_modules/
 .DS_Store
