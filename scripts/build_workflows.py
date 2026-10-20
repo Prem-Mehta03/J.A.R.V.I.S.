@@ -72,8 +72,7 @@ def link(*targets):
 
 CONTEXT_SQL = """select
   (select coalesce(json_agg(json_build_object('slug', slug, 'label', label) order by slug), '[]'::json) from jarvis.spaces) as spaces,
-  (select value from jarvis.settings where key = 'home_location') as home_location,
-  (select value from jarvis.settings where key = 'calendar_backup') as calendar_backup"""
+  (select value from jarvis.settings where key = 'home_location') as home_location"""
 
 GEMINI_OK = (
     "={{ !!($json.candidates && $json.candidates[0] && $json.candidates[0].content && $json.candidates[0].content.parts"
@@ -141,36 +140,6 @@ nodes = [
         "respondWith": "firstIncomingItem",
         "options": {},
     }),
-
-    # Side branch below the reply path: the Google Calendar backup copy. It runs after the reply is sent.
-    node("Calendar plan", "n8n-nodes-base.code", 2, [2420, 560], {"jsCode": code("calendar-plan.js")}),
-
-    if_node("Create event?", [2640, 560], "={{ $json.op === 'create' }}"),
-
-    node("Create calendar event", "n8n-nodes-base.httpRequest", 4.5, [2860, 480], {
-        "method": "POST",
-        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleCalendarOAuth2Api",
-        "sendBody": True,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {"timeout": 30000},
-    }, credentials={"googleCalendarOAuth2Api": {"id": "", "name": "Google Calendar"}}, onError="continueRegularOutput"),
-
-    node("Save event id", "n8n-nodes-base.postgres", 2.7, [3080, 480], {
-        "operation": "executeQuery",
-        "query": "update jarvis.items set calendar_event_id = $2 where id = $1::uuid and $2 <> ''",
-        "options": {"queryReplacement": "={{ [$('Calendar plan').item.json.item_id, $json.id || ''] }}"},
-    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, onError="continueRegularOutput"),
-
-    node("Delete calendar event", "n8n-nodes-base.httpRequest", 4.5, [2860, 660], {
-        "method": "DELETE",
-        "url": "=https://www.googleapis.com/calendar/v3/calendars/primary/events/{{ encodeURIComponent($json.event_id) }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleCalendarOAuth2Api",
-        "options": {"timeout": 30000},
-    }, credentials={"googleCalendarOAuth2Api": {"id": "", "name": "Google Calendar"}}, onError="continueRegularOutput"),
 ]
 
 # Prepare is only valid when the text is there; Plan handles the invalid case itself.
@@ -185,10 +154,7 @@ connections = {
     "Groq": link(["Plan"]),
     "Plan": link(["Needs database?"]),
     "Needs database?": link(["Run SQL"], ["Reply"]),
-    "Run SQL": link(["Reply", "Calendar plan"]),
-    "Calendar plan": link(["Create event?"]),
-    "Create event?": link(["Create calendar event"], ["Delete calendar event"]),
-    "Create calendar event": link(["Save event id"]),
+    "Run SQL": link(["Reply"]),
     "Reply": link(["Respond"]),
 }
 
@@ -249,25 +215,25 @@ select 'date', d.id, d.title, null, d.due_at, null, d.adv,
        (select value #>> '{}' from jarvis.settings where key = 'ntfy_topic')
 from d join dl on dl.item_id = d.id and dl.occurrence = d.occurrence and dl.advance_days = d.adv"""
 
-RECORD_SQL = """with r as (
-  select * from jsonb_to_recordset($1::jsonb) as x(id uuid, kind text, ok boolean, next_remind text, occurrence date, adv int)
-),
-a as (
-  update jarvis.items i set remind_at = r.next_remind::timestamptz
-  from r where i.id = r.id and r.kind = 'reminder' and r.ok and r.next_remind <> ''
-  returning i.id
+RECORD_SQL = """with a as (
+  -- delivered: a repeating reminder moves to its next time
+  update jarvis.items set remind_at = nullif($4, '')::timestamptz
+  where id = $1::uuid and $2 = 'reminder' and $3::boolean and $4 <> ''
+  returning id
 ),
 b as (
-  update jarvis.items i set last_notified_at = null, next_attempt_at = now() + interval '5 minutes'
-  from r where i.id = r.id and r.kind = 'reminder' and not r.ok
-  returning i.id
+  -- not delivered by any channel: free the reminder and try again in 5 minutes
+  update jarvis.items set last_notified_at = null, next_attempt_at = now() + interval '5 minutes'
+  where id = $1::uuid and $2 = 'reminder' and not $3::boolean
+  returning id
 ),
 c as (
-  update jarvis.alert_log l set ok = false, retry_at = now() + interval '5 minutes'
-  from r where r.kind = 'date' and not r.ok and l.item_id = r.id and l.occurrence = r.occurrence and l.advance_days = r.adv
+  update jarvis.alert_log set ok = false, retry_at = now() + interval '5 minutes'
+  where $2 = 'date' and not $3::boolean
+    and item_id = $1::uuid and occurrence = nullif($5, '')::date and advance_days = $6::int
   returning 1
 )
-select (select count(*) from a) as rolled, (select count(*) from b) as retry_reminders, (select count(*) from c) as retry_dates"""
+select (select count(*) from a) as rolled, (select count(*) from b) as retry_reminder, (select count(*) from c) as retry_date"""
 
 STALE_SQL = """select id, remind_at, recurrence from jarvis.items
 where type = 'reminder' and status = 'open' and recurrence is not null and remind_at <= now() - interval '1 day'
@@ -309,12 +275,28 @@ dispatcher_nodes = [
         "options": {"timeout": 20000},
     }, onError="continueRegularOutput"),
 
-    node("Finish", "n8n-nodes-base.code", 2, [1140, 200], {"jsCode": code("dispatch-finish.js")}),
+    node("Judge", "n8n-nodes-base.code", 2, [1140, 200], {"jsCode": code("dispatch-judge.js")}),
 
-    node("Record outcome", "n8n-nodes-base.postgres", 2.7, [1360, 200], {
+    if_node("Sent?", [1360, 200], "={{ $json.ok }}"),
+
+    # Only when the push failed: put the alert in Google Calendar so the phone still rings once.
+    node("Backup event", "n8n-nodes-base.httpRequest", 4.5, [1580, 320], {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.backup_body) }}",
+        "options": {"timeout": 30000},
+    }, credentials={"googleCalendarOAuth2Api": {"id": "", "name": "Google Calendar"}}, onError="continueRegularOutput"),
+
+    node("Judge backup", "n8n-nodes-base.code", 2, [1800, 320], {"jsCode": code("dispatch-judge-backup.js")}),
+
+    node("Record outcome", "n8n-nodes-base.postgres", 2.7, [2020, 200], {
         "operation": "executeQuery",
         "query": RECORD_SQL,
-        "options": {"queryReplacement": "={{ [$json.rows] }}"},
+        "options": {"queryReplacement": "={{ [$json.id, $json.kind, String($json.ok), $json.next_remind || '', $json.occurrence || '', String($json.adv || 0)] }}"},
     }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}),
 
     # A repeating reminder whose time passed more than a day ago (the service was asleep) is moved on without a stale alert.
@@ -337,9 +319,12 @@ dispatcher_connections = {
     "Every minute": link(["Claim due alerts", "Find stale repeats"]),
     "Claim due alerts": link(["Compose"]),
     "Compose": link(["Has topic?"]),
-    "Has topic?": link(["ntfy"], ["Finish"]),
-    "ntfy": link(["Finish"]),
-    "Finish": link(["Record outcome"]),
+    "Has topic?": link(["ntfy"], ["Judge"]),
+    "ntfy": link(["Judge"]),
+    "Judge": link(["Sent?"]),
+    "Sent?": link(["Record outcome"], ["Backup event"]),
+    "Backup event": link(["Judge backup"]),
+    "Judge backup": link(["Record outcome"]),
     "Find stale repeats": link(["Roll stale"]),
     "Roll stale": link(["Save stale"]),
 }

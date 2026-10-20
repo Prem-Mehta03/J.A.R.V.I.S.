@@ -54,8 +54,10 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 
 ## Reminder engine (Oct 20, M3)
 
-- **Backup alert channel: Google Calendar events.** No Telegram. When a reminder or important date is created, Jarvis also creates a Calendar event with a built-in alert, so Google notifies the phone even if Render or ntfy is down. Trade-off: reminders can alert twice (ntfy and Calendar). Turn the copies off with the `calendar_backup` setting.
-- **Only reminders and dates get calendar copies.** Tasks would only add clutter.
+- **One alert per reminder.** ntfy is the main channel. **Google Calendar is the backup, used only when the ntfy push fails**: Jarvis then creates a Calendar event that rings the phone about two minutes later. If Calendar takes it, the reminder counts as delivered and is not pushed again, so there is never a double alert. If both fail, it is tried again in 5 minutes.
+- Considered and rejected: a Calendar copy of every reminder (works even when n8n is asleep, but alerts twice and can arrive too late for reminders set a few minutes ahead). No Telegram, by choice.
+- **The backup only works while n8n is awake**, so the cron-job.org ping stays important.
+- **Calendar permission:** `calendar.events` only. It is a sensitive scope, but an unverified app is fine for one user (the unverified warning, and a cap of 100 new users that never matters). Re-check the token around 2026-10-28 together with Gmail.
 - **A dispatcher workflow runs every minute** and never stores its successful runs, to keep the database small. If the service was asleep, alerts up to a day late are still sent; older repeating reminders are moved on silently.
 - **Date alerts go out at 9 AM India time**: a week before, a day before (or whatever was asked) and on the day. An alert whose time was already past when the date was created is skipped.
 - **A failed push is retried every 5 minutes**, not every minute, so a rate-limited ntfy is not hammered.

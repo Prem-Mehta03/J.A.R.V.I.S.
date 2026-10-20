@@ -1,4 +1,4 @@
-// Tests for the M3 Code nodes: dispatcher (02) and the calendar branch of the router (01).
+// Tests for the M3 Code nodes of the reminder dispatcher (workflow 02).
 // Run with: node --test n8n/tests/m3.test.mjs   (rebuild first: python scripts/build_workflows.py)
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const load = (f) => JSON.parse(fs.readFileSync(path.join(here, '..', 'workflows', f), 'utf8'));
-const router = load('01-chat-router.json');
 const dispatcher = load('02-reminder-dispatcher.json');
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -92,23 +91,45 @@ test('Compose passes an empty topic through so the workflow can skip pushing', a
   assert.equal(o.topic, '');
 });
 
-// ---------------------------------------------------------------- Finish
-test('Finish marks pushes with an ntfy answer as sent and everything else as failed', async () => {
-  const planned = [
-    { kind: 'reminder', id: '1', topic: 't', next_remind: '', occurrence: '', adv: 0 },
-    { kind: 'reminder', id: '2', topic: 't', next_remind: '', occurrence: '', adv: 0 },
-    { kind: 'date', id: '3', topic: 't', next_remind: '', occurrence: '2026-10-27', adv: 7 },
-  ];
-  const [res] = await run(dispatcher, 'Finish', {
+// ---------------------------------------------------------------- Judge
+const planned = [
+  { kind: 'reminder', id: '1', title: 't1', message: 'Call home', topic: 't', next_remind: '', occurrence: '', adv: 0 },
+  { kind: 'reminder', id: '2', title: 't2', message: 'Water plants', topic: 't', next_remind: '', occurrence: '', adv: 0 },
+  { kind: 'date', id: '3', title: 'Exam', message: 'In 7 days: Exam (Tuesday, 27 Oct)', topic: 't', next_remind: '', occurrence: '2026-10-27', adv: 7 },
+];
+
+test('Judge marks pushes with an ntfy answer as sent and prepares a calendar event for the rest', async () => {
+  const out = await run(dispatcher, 'Judge', {
     input: [{ id: 'n1', event: 'message' }, { error: { message: '429' } }, { id: 'n3', event: 'message' }],
     nodes: { Compose: planned },
   });
-  const rows = JSON.parse(res.rows);
-  assert.deepEqual(rows.map((r) => r.ok), [true, false, true]);
-  assert.equal(res.failed, 1);
-  // The no-topic path hands the composed items straight on: all failed.
-  const [none] = await run(dispatcher, 'Finish', { input: planned, nodes: { Compose: planned } });
-  assert.equal(none.failed, 3);
+  assert.deepEqual(out.map((o) => o.ok), [true, false, true]);
+  assert.equal(out[0].backup_body, null);
+  const b = out[1].backup_body;
+  assert.equal(b.summary, '\u23F0 Water plants');
+  // 10:30 now, so the next whole minute at least two minutes away is 10:32.
+  assert.equal(b.start.dateTime, '2026-10-21T10:32:00+05:30');
+  assert.equal(b.end.dateTime, '2026-10-21T10:47:00+05:30');
+  assert.deepEqual(b.reminders, { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] });
+});
+
+test('Judge treats the no-topic path (items passed straight on) as failed and uses the date icon for dates', async () => {
+  const out = await run(dispatcher, 'Judge', { input: planned, nodes: { Compose: planned } });
+  assert.deepEqual(out.map((o) => o.ok), [false, false, false]);
+  assert.equal(out[2].backup_body.summary, '\uD83D\uDCC5 In 7 days: Exam (Tuesday, 27 Oct)');
+});
+
+test('Judge backup counts a failed push as delivered only when Calendar accepted the event', async () => {
+  const judged = [
+    { ...planned[0], ok: true },
+    { ...planned[1], ok: false, backup_body: {} },
+    { ...planned[2], ok: false, backup_body: {} },
+  ];
+  const out = await run(dispatcher, 'Judge backup', {
+    input: [{ id: 'evt1' }, { error: { message: 'denied' } }],
+    nodes: { Judge: judged },
+  });
+  assert.deepEqual(out.map((o) => [o.id, o.ok]), [['2', true], ['3', false]]);
 });
 
 // ---------------------------------------------------------------- Roll stale
@@ -117,43 +138,4 @@ test('Roll stale moves old repeating reminders on and emits nothing when there a
   assert.deepEqual(JSON.parse(o.rows), [{ id: 'z', next_remind: ist('2026-10-22T07:00:00+05:30') }]);
   const none = await run(dispatcher, 'Roll stale', { input: [{}] });
   assert.equal(none.length, 0);
-});
-
-// ---------------------------------------------------------------- Calendar plan
-const calPlan = (intent, rows, backup = true) => run(router, 'Calendar plan', {
-  input: rows,
-  nodes: { Plan: [{ plan: { intent, ctx: { calendar_backup: backup } } }], 'Run SQL': rows },
-});
-
-test('Calendar plan builds a timed event with a popup at the time for a reminder', async () => {
-  const [o] = await calPlan('reminder.create', [{ id: 'r1', title: 'Call home', remind_at: ist('2026-10-22T18:00:00+05:30'), recurrence: 'FREQ=WEEKLY;BYDAY=MO' }]);
-  assert.equal(o.op, 'create');
-  assert.equal(o.item_id, 'r1');
-  assert.equal(o.body.start.dateTime, '2026-10-22T18:00:00+05:30');
-  assert.equal(o.body.end.dateTime, '2026-10-22T18:15:00+05:30');
-  assert.deepEqual(o.body.reminders.overrides, [{ method: 'popup', minutes: 0 }]);
-  assert.deepEqual(o.body.recurrence, ['RRULE:FREQ=WEEKLY;BYDAY=MO']);
-});
-
-test('Calendar plan builds an all-day event with 9 AM advance popups for a date', async () => {
-  const [o] = await calPlan('date.create', [{ id: 'd1', title: "Mom's birthday", due_at: ist('2027-03-03T00:00:00+05:30'), advance_days: [7, 1], recurrence: 'FREQ=YEARLY' }]);
-  assert.equal(o.body.start.date, '2027-03-03');
-  assert.equal(o.body.end.date, '2027-03-04');
-  assert.deepEqual(o.body.reminders.overrides.map((x) => x.minutes), [9540, 900, 0]);
-  assert.deepEqual(o.body.recurrence, ['RRULE:FREQ=YEARLY']);
-});
-
-test('Calendar plan removes the copy when an item is closed, even with the backup switched off', async () => {
-  const [o] = await calPlan('item.complete', [{ match_count: 1, updated: { id: 'r1', calendar_event_id: 'evt9' } }], false);
-  assert.deepEqual(o, { op: 'delete', event_id: 'evt9' });
-  assert.equal((await calPlan('item.cancel', [{ match_count: 1, updated: { id: 'r1', calendar_event_id: null } }])).length, 0);
-  assert.equal((await calPlan('item.cancel', [{ match_count: 2, updated: null }])).length, 0);
-});
-
-test('Calendar plan does nothing when the backup is off, for tasks, lists and failed saves', async () => {
-  const row = { id: 'r1', title: 'x', remind_at: ist('2026-10-22T18:00:00+05:30') };
-  assert.equal((await calPlan('reminder.create', [row], false)).length, 0);
-  assert.equal((await calPlan('task.create', [{ id: 't', title: 'x', due_at: ist('2026-10-23T23:59:00+05:30') }])).length, 0);
-  assert.equal((await calPlan('item.list', [row])).length, 0);
-  assert.equal((await calPlan('reminder.create', [{}])).length, 0);
 });
