@@ -18,6 +18,8 @@ Supabase, SQL Editor, paste `db/migrations/008_email.sql`, Run. It adds one tabl
 2. **Re-import** `01-chat-router.json` and `03-items-api.json` the usual way (import, reconnect credentials, Active, deactivate the old copies).
 3. Open workflow 07 and press **Execute workflow** once. In "Fetch personal" and "Fetch college" you should see mail. If a node shows an error, the Gmail credential needs reconnecting (this is the check that was planned for around 28 October).
 
+Successful runs are not kept in n8n's history (the setting is in the file). Otherwise each run would store the raw mail, bodies included, in your database. Error runs are still kept.
+
 It then runs by itself every 15 minutes while Render is awake (the cron-job.org ping keeps it awake), and whenever you tap Refresh in the app.
 
 ## 4. The app
