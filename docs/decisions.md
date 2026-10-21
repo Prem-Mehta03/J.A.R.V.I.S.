@@ -94,3 +94,12 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **"Waking up" message only after 25 seconds**: a warm server answers in a few seconds, so the message appears only when the server is really cold.
 - **Hands-free is a Shortcut, not the app.** iPhone web apps cannot listen in the background, and the app cannot be started by voice reliably. The "Jarvis" Shortcut (dictate, call the server, speak) works with the screen locked.
 - **Recording stops by itself** after about 1.4 seconds of quiet, or you tap the button.
+
+## iOS Reminders sync (M6)
+
+- **One stateless endpoint, `jarvis-sync`.** The Shortcut reports which Jarvis ids it sees as ticked off and as still open; the server returns what to add and what to close. No "synced" flag is stored (`ios_reminder_ref` is not used), so a half-failed run is repaired by the next run, and nothing is added twice because the open ones are reported as `known`.
+- **Only non-repeating reminders and tasks sync.** Ticking off one occurrence on the phone would close the whole repeating series in Jarvis. Dates stay in Jarvis. They still alert through Bark.
+- **Done on the phone reaches Jarvis at the next sync.** iOS has no "reminder completed" trigger, so a few time-of-day automations plus "Hey Siri, Jarvis Sync" do it. The voice "done" shortcut reuses the chat route (`item.complete`), so there is no separate done endpoint.
+- **The id link lives in the reminder's Notes** (`jarvis:<id>`). The server reads only id-shaped text from them, so stray notes cannot break the SQL or the sync.
+- **Open question:** whether a due time on the phone copy also rings on its own (a second alert beside Bark). Decide after seeing it on the device.
+

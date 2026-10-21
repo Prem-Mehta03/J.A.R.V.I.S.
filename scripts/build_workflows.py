@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json 04-voice.json and 05-speak.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json 04-voice.json, 05-speak.json and 06-sync.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -22,6 +22,7 @@ OUT2 = ROOT / "n8n" / "workflows" / "02-reminder-dispatcher.json"
 OUT3 = ROOT / "n8n" / "workflows" / "03-items-api.json"
 OUT4 = ROOT / "n8n" / "workflows" / "04-voice.json"
 OUT5 = ROOT / "n8n" / "workflows" / "05-speak.json"
+OUT6 = ROOT / "n8n" / "workflows" / "06-sync.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -497,6 +498,50 @@ speak = {
 }
 
 
+sync_nodes = [
+    node("Webhook", "n8n-nodes-base.webhook", 2.2, [0, 300], {
+        "httpMethod": "POST",
+        "path": "jarvis-sync",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {},
+    }, webhookId=uid("webhook path jarvis-sync"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
+
+    node("Sync plan", "n8n-nodes-base.code", 2, [220, 300], {"jsCode": code("sync-plan.js")}),
+
+    if_node("Needs database?", [440, 300], "={{ $json.plan.action === 'sql' }}"),
+
+    node("Run SQL", "n8n-nodes-base.postgres", 2.7, [660, 200], {
+        "operation": "executeQuery",
+        "query": "={{ $json.plan.sql }}",
+        "options": {"queryReplacement": "={{ $json.plan.params }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, alwaysOutputData=True, onError="continueRegularOutput"),
+
+    node("Sync reply", "n8n-nodes-base.code", 2, [880, 300], {"jsCode": code("sync-reply.js")}),
+
+    node("Respond", "n8n-nodes-base.respondToWebhook", 1.5, [1100, 300], {
+        "respondWith": "firstIncomingItem",
+        "options": {},
+    }),
+]
+
+sync_connections = {
+    "Webhook": link(["Sync plan"]),
+    "Sync plan": link(["Needs database?"]),
+    "Needs database?": link(["Run SQL"], ["Sync reply"]),
+    "Run SQL": link(["Sync reply"]),
+    "Sync reply": link(["Respond"]),
+}
+
+sync = {
+    "name": "06 iOS Reminders sync",
+    "nodes": sync_nodes,
+    "connections": sync_connections,
+    "active": False,
+    "settings": {"executionOrder": "v1"},
+}
+
+
 def write(path, wf):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -510,3 +555,4 @@ if __name__ == "__main__":
     write(OUT3, items_api)
     write(OUT4, voice)
     write(OUT5, speak)
+    write(OUT6, sync)

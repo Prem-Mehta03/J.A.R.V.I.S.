@@ -1,6 +1,6 @@
 # Webhook contract
 
-Status: `jarvis-ping` (M0), `jarvis` (M2), `jarvis-items` (M4) and `jarvis-transcribe` and `jarvis-speak` (M5) exist. The rest is the plan for later milestones and may change.
+Status: `jarvis-ping` (M0), `jarvis` (M2), `jarvis-items` (M4) and `jarvis-transcribe` and `jarvis-speak` (M5) and `jarvis-sync` (M6) exist. The rest is the plan for later milestones and may change.
 
 Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared token protects all of them.
 
@@ -19,8 +19,7 @@ Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared
 |---|---|---|---|
 | `jarvis-ping` | POST | M0 (exists) | Health check. Returns `{"reply": "pong"}`. |
 | `jarvis` | POST | M2 (exists) | Chat. Text in, spoken-style reply out. Creates and changes items. |
-| `jarvis-reminders` | GET | M6 | Pending reminders for the iOS Reminders sync. |
-| `jarvis-done` | POST | M6 | Mark reminders done (from the sync, or "Jarvis, done with X"). |
+| `jarvis-sync` | POST | M6 (exists) | iOS Reminders sync: marks reminders ticked off on the phone as done, returns what to add and close there. "Jarvis, done with X" uses `jarvis` instead. |
 | `jarvis-email-feedback` | POST | M8 | "That was an ad" corrections. |
 
 ### `POST jarvis` (M2)
@@ -78,6 +77,20 @@ Limits: Groq's free tier allows about 20 requests a minute and 2,000 a day, far 
 Same `X-Jarvis-Token` header. JSON body `{"text": "...", "voice": "troy"}`. `text` is up to 400 characters (the app sends pieces of at most 190, because Groq's speech model takes short input). `voice` is one of `austin, troy, daniel, autumn, diana, hannah` (default `troy`). Runs Groq `canopylabs/orpheus-v1-english` and returns the audio inline.
 
 Response: `{"ok": true, "audio": "<base64 WAV>", "mime": "audio/wav"}`, or `{"ok": false, "error": "...", "reply": "...", "detail": "..."}` with `missing_text`, `text_too_long`, `terms` (model terms not yet accepted in the Groq console), `busy` (rate limit, about 100 requests a day on the free tier) or `tts_error`. The app falls back to the phone's voice on any error.
+
+## `POST /webhook/jarvis-sync` (M6, used by the "Jarvis Sync" Shortcut)
+
+Same `X-Jarvis-Token` header. JSON body `{"done": "<text>", "known": "<text>"}`. Each is the Notes of reminders in the iPhone "Jarvis" list (one per line, a real list also works): `done` from the ticked-off ones, `known` from the open ones. Only text shaped like an id is used (`jarvis:<id>` or a bare id); anything else is ignored. At most 200 ids in each.
+
+In one database statement it marks the `done` ids as done (open reminders and tasks only) and answers:
+
+```json
+{"ok": true, "add": [{"id": "...", "title": "Call home", "due": "2026-10-22T18:00:00+05:30", "note": "jarvis:<id>"}],
+ "add_plain": [{"id": "...", "title": "Buy pens", "due": "", "note": "jarvis:<id>"}],
+ "close_ids": ["..."], "close_text": "id\nid", "completed": 1, "reply": "Synced. 1 new, 1 closed on your phone, 1 marked done in Jarvis."}
+```
+
+`add`: open, non-repeating reminders and tasks with a time, not in `known`, at most 50. `add_plain`: the same with no time. `close_ids`: ids in `known` that are no longer open in Jarvis (done, cancelled or gone). Repeating reminders and dates are never synced. Errors (HTTP 200, `ok:false`): `too_many` (over 200 ids) and `db_error`.
 
 ## The token
 
