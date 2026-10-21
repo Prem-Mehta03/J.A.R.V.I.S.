@@ -663,7 +663,7 @@ email = {
     "nodes": email_nodes,
     "connections": email_connections,
     "active": False,
-    "settings": {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveManualExecutions": False},
+    "settings": {"executionOrder": "v1"},
 }
 
 
