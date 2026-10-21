@@ -89,6 +89,8 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 ## Voice (M5)
 
 - **Speech to text on Groq Whisper** (free, uses the Groq key already in n8n) rather than the browser's speech recognition, which is unreliable in installed iPhone web apps. The app records, the server transcribes, then the text goes through the normal chat path, so voice and typing behave identically.
-- **Spoken replies use the phone's own voices** (free, offline). The speaker button in the top bar turns them on or off; they apply to replies to voice requests only, so typing never makes it talk. Each reply also has a small speaker icon to read it aloud again.
+- **Voice mode is a separate full-screen page** (like Gemini Live): orb in the centre, listen, think, speak, listen again. It shows no reply text and saves nothing in the chat, and only voice requests are spoken (typing never makes it talk). Each chat reply still has a small speaker icon to read it aloud.
+- **Natural voice via Groq Orpheus** (`jarvis-speak`, free, about 100 pieces a day) replaced the browser's robotic voice as the default; the phone's own voice is the automatic fallback and a Settings choice. iOS does not expose Siri voices to web pages, so Siri's "American voice 3" cannot be matched exactly. The orb's speaking animation is driven by the loudness of the audio itself.
+- **"Waking up" message only after 25 seconds**: a warm server answers in a few seconds, so the message appears only when the server is really cold.
 - **Hands-free is a Shortcut, not the app.** iPhone web apps cannot listen in the background, and the app cannot be started by voice reliably. The "Jarvis" Shortcut (dictate, call the server, speak) works with the screen locked.
 - **Recording stops by itself** after about 1.4 seconds of quiet, or you tap the button.

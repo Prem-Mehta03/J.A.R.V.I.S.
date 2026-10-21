@@ -1,0 +1,208 @@
+{
+  "name": "05 Speech (text to speech)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jarvis-speak",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "1bf8ae65-a9cf-5e84-980b-c4591ce8a98b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "196e323b-f743-5e25-939b-7b8f82a41b62",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Jarvis token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Check text\": validates the request and builds the Groq text-to-speech body.\nconst body = ($input.first().json || {}).body || {};\nconst VOICES = ['austin', 'troy', 'daniel', 'autumn', 'diana', 'hannah'];\nconst text = typeof body.text === 'string' ? body.text.replace(/\\s+/g, ' ').trim() : '';\nif (!text) return [{ json: { ok: false, error: 'missing_text', reply: 'There was nothing to say.' } }];\nif (text.length > 400) return [{ json: { ok: false, error: 'text_too_long', reply: 'That is too long to speak in one piece.' } }];\nconst voice = VOICES.includes(body.voice) ? body.voice : 'troy';\nreturn [{ json: { ok: true, tts_body: { model: 'canopylabs/orpheus-v1-english', input: text, voice, response_format: 'wav' } } }];\n"
+      },
+      "id": "e7c6e491-5c71-525d-9797-62d83138bbda",
+      "name": "Check text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a9adf74b-abc8-5589-9443-0a0f1435d646",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "72cf9657-d941-5513-be2c-b87147ed44f1",
+      "name": "Has text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/speech",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tts_body) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "52e3ab8f-c80f-523f-8f09-f5ef50e4946d",
+      "name": "Groq speech",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Groq key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Pack audio\": the text-to-speech answer arrives as a file. If it is audio, hand it back as base64 JSON;\n// otherwise it is an error message from Groq, so turn that into a short reason the app can show.\nconst item = $input.first();\nconst bin = item.binary && item.binary.data;\nif (!bin) return [{ json: { ok: false, error: 'tts_error', reply: 'No audio came back.' } }];\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nif (/^audio\\//i.test(String(bin.mimeType || '')) || buf.slice(0, 4).toString('latin1') === 'RIFF') {\n  return [{ json: { ok: true, audio: buf.toString('base64'), mime: 'audio/wav' } }];\n}\nlet detail = '';\ntry { const j = JSON.parse(buf.toString('utf8')); detail = String((j.error && (j.error.message || j.error.code)) || j.message || ''); } catch (e) { detail = buf.toString('utf8').slice(0, 160); }\ndetail = detail.slice(0, 200);\nlet error = 'tts_error';\nif (/terms/i.test(detail)) error = 'terms';\nelse if (/rate|limit|quota|exceeded/i.test(detail)) error = 'busy';\nreturn [{ json: { ok: false, error, reply: 'The natural voice is not available right now.', detail } }];\n"
+      },
+      "id": "d95c23ad-fe71-5b99-afd0-5a806afa6dc4",
+      "name": "Pack audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "id": "fa1b6517-3a37-56fd-95f9-6a21c9cf7578",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check text": {
+      "main": [
+        [
+          {
+            "node": "Has text?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has text?": {
+      "main": [
+        [
+          {
+            "node": "Groq speech",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq speech": {
+      "main": [
+        [
+          {
+            "node": "Pack audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack audio": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

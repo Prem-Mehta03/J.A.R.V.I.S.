@@ -1,9 +1,10 @@
 import * as L from './logic.js';
 import { icon } from './icons.js';
 import { attachOrb, setOrbMode, setOrbLevel } from './orb.js';
-import { canRecord, startRecording, canSpeak, tts } from './voice.js';
+import { canSpeak, deviceVoices, createSpeaker } from './voice.js';
+import { createVoiceMode } from './voicemode.js';
 
-const LS = { url: 'jarvis.url', token: 'jarvis.token', cache: 'jarvis.cache', chat: 'jarvis.chat', speak: 'jarvis.speak' };
+const LS = { url: 'jarvis.url', token: 'jarvis.token', cache: 'jarvis.cache', chat: 'jarvis.chat', voice: 'jarvis.voice' };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode: ignore */ } },
@@ -13,7 +14,7 @@ const store = {
 const state = {
   view: 'chat', space: 'all', drawer: false, sheet: null, search: '',
   items: [], spaces: [], loadedAt: null, online: true, busy: false, waking: false,
-  status: '', statusErr: false, chat: [], speak: store.get(LS.speak) !== '0', rec: null, transcribing: false, open: { overdue: true, tomorrow: false },
+  status: '', statusErr: false, chat: [], open: { overdue: true, tomorrow: false },
 };
 try { state.chat = JSON.parse(store.get(LS.chat) || '[]').slice(-40); } catch (e) { state.chat = []; }
 try {
@@ -66,12 +67,35 @@ async function callForm(path, form, timeoutMs = 60000) {
   } finally { clearTimeout(timer); }
 }
 
+const NATURAL_VOICES = [['troy', 'Troy (male)'], ['austin', 'Austin (male)'], ['daniel', 'Daniel (male)'], ['autumn', 'Autumn (female)'], ['diana', 'Diana (female)'], ['hannah', 'Hannah (female)']];
+function voicePrefs() {
+  let p = {}; try { p = JSON.parse(store.get(LS.voice) || '{}') || {}; } catch (e) { p = {}; }
+  return { engine: p.engine === 'device' ? 'device' : 'natural', serverVoice: NATURAL_VOICES.some(([k]) => k === p.serverVoice) ? p.serverVoice : 'troy', deviceVoice: p.deviceVoice || '' };
+}
+const saveVoicePrefs = (p) => store.set(LS.voice, JSON.stringify(p));
+
+const speaker = createSpeaker({
+  fetchSpeech: (text, voice) => call('jarvis-speak', { text, voice }, 35000),
+  onLevel: (v) => setOrbLevel(v),
+});
+const voiceMode = createVoiceMode({
+  el, speaker, getPrefs: voicePrefs,
+  transcribe: (blob) => {
+    const form = new FormData();
+    form.append('audio', blob, 'voice.' + (blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'm4a'));
+    return callForm('jarvis-transcribe', form);
+  },
+  ask: (text) => call('jarvis', { text, source: 'voice' }),
+  onExit: () => { setOrbMode('idle'); refresh(); },
+});
+
 const saveCache = () => store.set(LS.cache, JSON.stringify({ items: state.items, spaces: state.spaces, at: (state.loadedAt || new Date()).toISOString() }));
 
 async function refresh() {
-  state.waking = true; setStatus('Jarvis is waking up. This can take up to a minute.');
+  // Only say "waking up" if the server is really slow (a warm server answers in a few seconds).
+  const wake = setTimeout(() => setStatus('Jarvis is waking up. This can take up to a minute.'), WAKE_MS);
   const r = await call('jarvis-items', { action: 'list' });
-  state.waking = false;
+  clearTimeout(wake);
   if (r.ok) {
     state.items = r.items || []; state.spaces = r.spaces || []; state.loadedAt = new Date(); state.online = true;
     saveCache(); setStatus('');
@@ -92,63 +116,33 @@ async function closeItem(item, action) {
   renderAll();
 }
 
+const WAKE_MS = 25000;
 let wakeTimer = 0;
-async function ask(text, { voice = false } = {}) {
+async function ask(text) {
   text = text.trim(); if (!text || state.busy) return;
-  tts.stop();
+  speaker.stop();
   ui.input.value = ''; syncSend();
   state.chat.push({ who: 'me', text }); state.busy = true; state.waking = false;
   setOrbMode('thinking'); renderMain();
-  wakeTimer = setTimeout(() => { state.waking = true; renderMain(); }, 7000);
+  wakeTimer = setTimeout(() => { state.waking = true; renderMain(); }, WAKE_MS);
   const r = await call('jarvis', { text, source: 'app' });
   clearTimeout(wakeTimer); state.busy = false; state.waking = false;
   state.chat.push({ who: 'bot', text: r.reply || 'No answer came back.', err: r.ok === false, detail: r.detail || '', at: new Date().toISOString() });
   state.chat = state.chat.slice(-40); store.set(LS.chat, JSON.stringify(state.chat));
-  const spoken = voice && state.speak && canSpeak && r.reply;
-  if (spoken) speak(r.reply);
-  else { setOrbMode('replying'); setTimeout(() => { if (!state.busy && !tts.speaking) setOrbMode('idle'); }, 2200); }
+  setOrbMode('replying'); setTimeout(() => { if (!state.busy && !speaker.speaking) setOrbMode('idle'); }, 2200);
   renderMain(); syncSend();
   if (r.ok || r.error === 'network') refresh();
 }
 
-function speak(text) {
-  tts.speak(text, { onStart: () => setOrbMode('replying'), onEnd: () => { if (!state.busy && !state.rec) setOrbMode('idle'); renderSpeaker(); } });
-  renderSpeaker();
+// Read a chat reply aloud (replay button).
+function readAloud(text) {
+  speaker.unlock();
+  speaker.speak(text, voicePrefs(), { onStart: () => setOrbMode('speaking') }).then(() => { if (!state.busy) setOrbMode('idle'); });
 }
 
-async function startVoice() {
-  if (state.rec || state.busy || state.transcribing) return;
-  if (!canRecord()) { setStatus('Voice recording is not available in this browser.', true); return; }
-  tts.stop(); tts.unlock();
-  try {
-    const ctl = await startRecording({
-      onLevel: (v) => setOrbLevel(v),
-      onSilence: (why) => { if (why === 'nothing') { cancelVoice(); setStatus("I didn't hear anything."); } else finishVoice(); },
-    });
-    state.rec = ctl; setOrbMode('listening'); setStatus('Listening. Tap the button when you are done.'); renderComposer();
-  } catch (e) {
-    state.rec = null; setOrbMode('idle');
-    setStatus(e && e.name === 'NotAllowedError' ? 'The microphone is blocked. Allow it for this app in iPhone Settings, then try again.' : 'Could not start the microphone.', true);
-  }
-}
-
-function cancelVoice() {
-  if (state.rec) state.rec.cancel();
-  state.rec = null; setOrbLevel(0); setOrbMode('idle'); setStatus(''); renderComposer();
-}
-
-async function finishVoice() {
-  const ctl = state.rec; if (!ctl) return;
-  state.rec = null; state.transcribing = true; setOrbMode('thinking'); setStatus('Transcribing...'); renderComposer();
-  const blob = await ctl.stop();
-  if (!blob || blob.size < 1200) { state.transcribing = false; setOrbMode('idle'); setStatus("I didn't hear anything."); renderComposer(); return; }
-  const form = new FormData();
-  form.append('audio', blob, 'voice.' + (blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'm4a'));
-  if (state.view !== 'chat') go('chat');
-  const r = await callForm('jarvis-transcribe', form);
-  state.transcribing = false; renderComposer();
-  if (r.ok && r.text) { setStatus(''); ask(r.text, { voice: true }); }
-  else { setOrbMode('idle'); setStatus(r.reply || 'I could not make that out.', true); }
+function openVoiceMode(opts) {
+  if (state.busy) return;
+  ui.input.blur(); voiceMode.open(opts && opts.autostart === false ? { autostart: false } : {});
 }
 
 function setStatus(text, err = false) { state.status = text; state.statusErr = err; if (ui.status) renderStatus(); }
@@ -216,7 +210,7 @@ function chatView() {
     if (m.who === 'me') return el('div', { class: 'u' }, m.text);
     return el('div', { class: 'b' },
       el('div', { class: 'b-head' }, el('span', { class: 'avatar' + (m.err ? ' err' : '') }), 'Jarvis', m.at ? el('span', { class: 'when' }, L.fmtTime(new Date(m.at))) : null,
-        canSpeak && !m.err ? el('button', { class: 'replay', 'aria-label': 'Read aloud', onclick: () => { if (tts.speaking) { tts.stop(); setOrbMode('idle'); renderSpeaker(); } else { tts.unlock(); speak(m.text); } } }, icon('volume', 16)) : null),
+        !m.err ? el('button', { class: 'replay', 'aria-label': 'Read aloud', onclick: () => { if (speaker.speaking) { speaker.stop(); setOrbMode('idle'); } else readAloud(m.text); } }, icon('volume', 16)) : null),
       el('div', { class: 'b-text' }, m.text, m.detail ? el('div', { class: 'detail' }, m.detail) : null));
   });
   if (state.busy) msgs.push(el('div', { class: 'b' }, el('div', { class: 'b-head' }, el('span', { class: 'avatar' }), 'Jarvis'),
@@ -351,52 +345,42 @@ function renderSheet() {
 
 function renderAll() { renderMain(); renderDrawer(); renderSheet(); renderStatus(); }
 
-function renderComposer() {
-  const rec = !!state.rec;
-  ui.input.disabled = rec || state.transcribing;
-  ui.input.placeholder = rec ? 'Listening...' : state.transcribing ? 'Transcribing...' : 'Ask or tell Jarvis...';
-  ui.mic.className = 'mic' + (rec ? ' rec' : '');
-  ui.mic.replaceChildren(icon(rec ? 'stop' : 'mic', 20));
-  ui.mic.setAttribute('aria-label', rec ? 'Stop and send' : 'Speak');
-  ui.cancel.hidden = !rec;
-  ui.send.disabled = state.busy || rec || state.transcribing;
-}
-
-function renderSpeaker() {
-  if (!ui.speaker) return;
-  const on = state.speak;
-  ui.speaker.replaceChildren(icon(tts.speaking ? 'stop' : on ? 'volume' : 'mute', 22));
-  ui.speaker.setAttribute('aria-pressed', String(on));
-  ui.speaker.setAttribute('aria-label', tts.speaking ? 'Stop speaking' : on ? 'Spoken replies on' : 'Spoken replies off');
-  ui.speaker.classList.toggle('off', !on && !tts.speaking);
-}
-
-function toggleSpeaker() {
-  if (tts.speaking) { tts.stop(); if (!state.busy) setOrbMode('idle'); renderSpeaker(); return; }
-  state.speak = !state.speak; store.set(LS.speak, state.speak ? '1' : '0');
-  if (state.speak) { tts.unlock(); setStatus('Replies to your voice will be spoken.'); } else setStatus('Spoken replies are off.');
-  renderSpeaker();
-}
-
-function syncSend() { ui.send.classList.toggle('ready', ui.input.value.trim().length > 0); ui.send.disabled = state.busy || !!state.rec || state.transcribing; }
+function syncSend() { ui.send.classList.toggle('ready', ui.input.value.trim().length > 0); ui.send.disabled = state.busy; }
 
 // ---------- screens ----------
 function setupView(error = '', canCancel = false) {
   const url = el('input', { id: 'su-url', type: 'url', inputmode: 'url', autocomplete: 'off', autocapitalize: 'off', placeholder: 'your-server.onrender.com', value: store.get(LS.url) || '' });
   const tok = el('input', { id: 'su-token', type: 'password', autocomplete: 'off', placeholder: 'Jarvis token', value: store.get(LS.token) || '' });
   const err = el('div', { class: 'err' }, error);
+  const vp = voicePrefs();
+  const opt = (v, t, sel) => el('option', { value: v, selected: sel }, t);
+  const engine = el('select', { id: 'su-engine' }, opt('natural', 'Natural voice (needs internet)', vp.engine === 'natural'), opt('device', 'Phone voice', vp.engine === 'device'));
+  const natural = el('select', { id: 'su-natural' }, NATURAL_VOICES.map(([k, t]) => opt(k, t, k === vp.serverVoice)));
+  const devs = deviceVoices();
+  const device = el('select', { id: 'su-device' }, opt('', 'Best available', !vp.deviceVoice), devs.map((v) => opt(v.name, `${v.name} (${v.lang})`, v.name === vp.deviceVoice)));
+  const current = () => ({ engine: engine.value, serverVoice: natural.value, deviceVoice: device.value });
+  const testNote = el('div', { class: 'hint' });
+  const test = el('button', { class: 'btn quiet', type: 'button', onclick: async () => {
+    speaker.unlock(); testNote.textContent = 'Playing...';
+    const r = await speaker.speak('Good evening. I am Jarvis, and this is how I sound.', current());
+    testNote.textContent = r.engine === 'natural' ? 'Natural voice works.' : engine.value === 'natural' ? `Natural voice is unavailable (${speaker.lastError || 'no reason given'}). Played the phone voice instead.` : '';
+  } }, 'Play a sample');
+  const voiceBox = canCancel ? el('div', { class: 'voice-box' }, el('h2', { class: 'sec' }, 'Voice'),
+    el('label', { for: 'su-engine' }, 'Spoken replies', engine), el('label', { for: 'su-natural' }, 'Natural voice', natural),
+    canSpeak ? el('label', { for: 'su-device' }, 'Phone voice', device) : null, test, testNote) : null;
   root.replaceChildren(el('form', { class: 'setup', onsubmit: (e) => {
     e.preventDefault();
     const p = L.parseServerUrl(url.value);
     if (!p.ok) { err.textContent = p.error; return; }
     if (!tok.value.trim()) { err.textContent = 'Enter your Jarvis token.'; return; }
     store.set(LS.url, p.url); store.set(LS.token, tok.value.trim());
+    if (canCancel) saveVoicePrefs(current());
     boot();
   } },
     el('img', { src: 'icons/icon-192.png', alt: '' }),
     el('h1', {}, canCancel ? 'Settings' : 'Connect Jarvis'),
     el('p', {}, 'Your server address and token stay on this device.'),
-    el('label', { for: 'su-url' }, 'Server address', url), el('label', { for: 'su-token' }, 'Token', tok), err,
+    el('label', { for: 'su-url' }, 'Server address', url), el('label', { for: 'su-token' }, 'Token', tok), err, voiceBox,
     el('button', { class: 'btn', type: 'submit' }, canCancel ? 'Save' : 'Connect'),
     canCancel ? el('button', { class: 'btn quiet', type: 'button', onclick: () => boot() }, 'Back') : null));
 }
@@ -404,14 +388,12 @@ function setupView(error = '', canCancel = false) {
 function mountShell() {
   ui.menu = el('button', { class: 'icon-btn', 'aria-label': 'Open menu', onclick: () => toggleDrawer(true) }, icon('menu', 24));
   const mini = el('canvas', { class: 'orb-mini', 'aria-hidden': 'true' }); attachOrb(mini, { count: 110, rings: false });
-  ui.speaker = el('button', { class: 'icon-btn', type: 'button', onclick: toggleSpeaker });
   ui.main = el('main', { class: 'main' });
   ui.status = el('div', { class: 'status', role: 'status' });
   ui.input = el('input', { id: 'ask-input', type: 'text', enterkeyhint: 'send', autocomplete: 'off', placeholder: 'Ask or tell Jarvis...', 'aria-label': 'Message' });
   ui.send = el('button', { class: 'send', type: 'submit', 'aria-label': 'Send' }, icon('send', 22));
-  ui.mic = el('button', { class: 'mic', type: 'button', 'aria-label': 'Speak', onclick: () => { if (state.rec) finishVoice(); else startVoice(); } }, icon('mic', 20));
-  ui.cancel = el('button', { class: 'mic', type: 'button', 'aria-label': 'Cancel recording', hidden: true, onclick: cancelVoice }, icon('close', 18));
-  ui.composer = el('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); ask(ui.input.value); } }, el('div', { class: 'field' }, ui.input, ui.cancel, ui.mic), ui.send);
+  ui.mic = el('button', { class: 'mic', type: 'button', 'aria-label': 'Talk to Jarvis', onclick: openVoiceMode }, icon('mic', 20));
+  ui.composer = el('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); ask(ui.input.value); } }, el('div', { class: 'field' }, ui.input, ui.mic), ui.send);
   ui.fab = el('button', { class: 'fab', onclick: () => prefill('My ... is on ') }, icon('plus', 22), 'Add date');
   ui.scrim = el('div', { class: 'scrim', onclick: () => toggleDrawer(false) });
   ui.drawer = el('aside', { class: 'drawer', 'aria-label': 'Menu' });
@@ -423,16 +405,16 @@ function mountShell() {
     setOrbMode('listening'); clearTimeout(calm); calm = setTimeout(() => { if (!state.busy) setOrbMode('idle'); }, 1600);
   });
   ui.input.addEventListener('blur', () => { clearTimeout(calm); if (!state.busy) setOrbMode('idle'); });
-  root.replaceChildren(el('header', { class: 'top' }, ui.menu, el('div', { class: 'brand' }, 'Jarvis', mini), ui.speaker),
+  root.replaceChildren(el('header', { class: 'top' }, ui.menu, el('div', { class: 'brand' }, 'Jarvis', mini), el('span', { class: 'icon-btn', 'aria-hidden': 'true' })),
     ui.main, ui.status, ui.composer, ui.fab, ui.scrim, ui.drawer, ui.sheet);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (state.sheet) { state.sheet = null; renderSheet(); } else if (state.drawer) toggleDrawer(false); } });
-  syncSend(); renderSpeaker(); renderComposer(); renderAll();
+  syncSend(); renderAll();
 }
 
 function boot() {
   if (!store.get(LS.url) || !store.get(LS.token)) { setupView(); return; }
   state.view = 'chat'; setOrbMode('idle'); mountShell(); refresh();
-  if (new URLSearchParams(location.search).get('voice') === '1') { history.replaceState(null, '', location.pathname); setTimeout(startVoice, 600); }
+  if (new URLSearchParams(location.search).get('voice') === '1') { history.replaceState(null, '', location.pathname); setTimeout(() => openVoiceMode({ autostart: false }), 300); } // no tap yet, so wait for one (iPhone only plays sound after a touch)
 }
 
 // Keep the composer above the iPhone keyboard.
@@ -440,7 +422,7 @@ if (window.visualViewport) {
   const fit = () => { root.style.setProperty('--vvh', window.visualViewport.height + 'px'); window.scrollTo(0, 0); };
   window.visualViewport.addEventListener('resize', fit); fit();
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden && state.rec) cancelVoice(); if (!document.hidden && ui.main && store.get(LS.url) && !state.busy) refresh(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && voiceMode.active) voiceMode.close(); if (!document.hidden && ui.main && store.get(LS.url) && !state.busy) refresh(); });
 setInterval(() => { if (ui.main && !document.hidden && !state.sheet && !state.drawer && state.view !== 'chat' && state.view !== 'dates') renderMain(); }, 60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 boot();

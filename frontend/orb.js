@@ -2,10 +2,12 @@
 // One shared mode (idle, listening, thinking, replying) drives every orb on screen.
 const TAU = Math.PI * 2;
 const MODES = {
-  idle:      { spin: 0.22, scale: 1.0,  energy: 0.55, streak: 0.5, ring: 0.25, ripple: 0 },
-  listening: { spin: 0.45, scale: 0.92, energy: 0.85, streak: 0.8, ring: 0.5,  ripple: 1 },
-  thinking:  { spin: 1.9,  scale: 0.96, energy: 1.0,  streak: 2.2, ring: 2.2,  ripple: 0 },
-  replying:  { spin: 0.6,  scale: 1.03, energy: 0.9,  streak: 1.2, ring: 0.6,  ripple: 0.4 },
+  idle:      { spin: 0.22, scale: 1.0,  energy: 0.55, streak: 0.5, ring: 0.25, ripple: 0, wave: 0 },
+  listening: { spin: 0.45, scale: 0.92, energy: 0.85, streak: 0.8, ring: 0.5,  ripple: 1, wave: 0 },
+  thinking:  { spin: 1.9,  scale: 0.96, energy: 1.0,  streak: 2.2, ring: 2.2,  ripple: 0, wave: 0 },
+  replying:  { spin: 0.6,  scale: 1.03, energy: 0.9,  streak: 1.2, ring: 0.6,  ripple: 0.4, wave: 0 },
+  // Jarvis talking: the sphere calms and a ring of voice bars lights up around it.
+  speaking:  { spin: 0.35, scale: 0.9,  energy: 0.95, streak: 0.5, ring: 0.4,  ripple: 0, wave: 1 },
 };
 const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const orbs = new Set();
@@ -84,7 +86,8 @@ function draw(o) {
   const e = Math.min(1.2, cur.energy + 0.4 * lv);
   ctx.globalCompositeOperation = 'source-over';
 
-  let g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
+  const glowR = Math.min(R * 1.9, size / 2);
+  let g = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
   g.addColorStop(0, `rgba(255,170,60,${0.26 * e})`); g.addColorStop(0.55, `rgba(231,120,1,${0.1 * e})`); g.addColorStop(1, 'rgba(231,120,1,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
   g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
@@ -123,10 +126,22 @@ function draw(o) {
     ctx.beginPath(); ctx.arc(cx, cy, R * 1.3, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
   }
 
-  if (cur.ripple + lv > 0.02) {
+  if (cur.wave > 0.02) {
+    const bars = 64, inner = R * 1.3, room = size / 2 - inner - 2;
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgb(255,200,110)'; ctx.lineWidth = Math.max(1.5, unit * 2.2);
+    for (let i = 0; i < bars; i++) {
+      const a = (i / bars) * TAU + t * 0.15;
+      const n = 0.5 + 0.5 * Math.sin(i * 1.7 + t * 9) * Math.sin(i * 0.63 - t * 5.3);
+      const h = Math.min(room, (0.04 + (0.1 + 0.45 * lv) * n) * R) * cur.wave;
+      ctx.globalAlpha = Math.min(1, 0.35 + 0.65 * n) * cur.wave;
+      ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner); ctx.lineTo(cx + Math.cos(a) * (inner + h), cy + Math.sin(a) * (inner + h)); ctx.stroke();
+    }
+  }
+
+  if (cur.ripple + lv * (mode === 'speaking' ? 0 : 1) > 0.02) {
     for (let i = 0; i < 2; i++) {
       const ph = (t * 0.7 + i * 0.5) % 1;
-      ctx.globalAlpha = (1 - ph) * 0.4 * (cur.ripple + lv); ctx.strokeStyle = 'rgb(255,184,77)'; ctx.lineWidth = Math.max(0.8, unit * 1.2);
+      ctx.globalAlpha = (1 - ph) * 0.4 * (cur.ripple + (mode === 'speaking' ? 0 : lv)); ctx.strokeStyle = 'rgb(255,184,77)'; ctx.lineWidth = Math.max(0.8, unit * 1.2);
       ctx.beginPath(); ctx.arc(cx, cy, R * (1.05 + 0.45 * ph), 0, TAU); ctx.stroke();
     }
   }

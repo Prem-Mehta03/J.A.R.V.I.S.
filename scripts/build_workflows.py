@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json and 04-voice.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json 04-voice.json and 05-speak.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -21,6 +21,7 @@ OUT = ROOT / "n8n" / "workflows" / "01-chat-router.json"
 OUT2 = ROOT / "n8n" / "workflows" / "02-reminder-dispatcher.json"
 OUT3 = ROOT / "n8n" / "workflows" / "03-items-api.json"
 OUT4 = ROOT / "n8n" / "workflows" / "04-voice.json"
+OUT5 = ROOT / "n8n" / "workflows" / "05-speak.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -447,6 +448,55 @@ voice = {
 }
 
 
+speak_nodes = [
+    node("Webhook", "n8n-nodes-base.webhook", 2.1, [0, 300], {
+        "httpMethod": "POST",
+        "path": "jarvis-speak",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {"allowedOrigins": "*"},
+    }, webhookId=uid("webhook path jarvis-speak"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
+
+    node("Check text", "n8n-nodes-base.code", 2, [220, 300], {"jsCode": code("speak-check.js")}),
+
+    if_node("Has text?", [440, 300], "={{ $json.ok === true }}"),
+
+    node("Groq speech", "n8n-nodes-base.httpRequest", 4.5, [660, 200], {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/speech",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.tts_body) }}",
+        "options": {"timeout": 30000, "response": {"response": {"responseFormat": "file", "neverError": True}}},
+    }, credentials={"httpHeaderAuth": {"id": "", "name": "Groq key"}}, onError="continueRegularOutput"),
+
+    node("Pack audio", "n8n-nodes-base.code", 2, [880, 200], {"jsCode": code("speak-pack.js")}),
+
+    node("Respond", "n8n-nodes-base.respondToWebhook", 1.5, [1100, 300], {
+        "respondWith": "firstIncomingItem",
+        "options": {},
+    }),
+]
+
+speak_connections = {
+    "Webhook": link(["Check text"]),
+    "Check text": link(["Has text?"]),
+    "Has text?": link(["Groq speech"], ["Respond"]),
+    "Groq speech": link(["Pack audio"]),
+    "Pack audio": link(["Respond"]),
+}
+
+speak = {
+    "name": "05 Speech (text to speech)",
+    "nodes": speak_nodes,
+    "connections": speak_connections,
+    "active": False,
+    "settings": {"executionOrder": "v1"},
+}
+
+
 def write(path, wf):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -459,3 +509,4 @@ if __name__ == "__main__":
     write(OUT2, dispatcher)
     write(OUT3, items_api)
     write(OUT4, voice)
+    write(OUT5, speak)
