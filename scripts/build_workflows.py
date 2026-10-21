@@ -76,7 +76,13 @@ def link(*targets):
 
 CONTEXT_SQL = """select
   (select coalesce(json_agg(json_build_object('slug', slug, 'label', label) order by slug), '[]'::json) from jarvis.spaces) as spaces,
-  (select value from jarvis.settings where key = 'home_location') as home_location"""
+  (select value from jarvis.settings where key = 'home_location') as home_location,
+  (select coalesce(json_agg(x), '[]'::json) from (
+     select type, left(title, 80) as title from jarvis.items
+     where status = 'open' and type in ('reminder', 'task', 'date')
+     order by coalesce(remind_at, due_at) nulls last, created_at
+     limit 60
+   ) x) as open_items"""
 
 GEMINI_OK = (
     "={{ !!($json.candidates && $json.candidates[0] && $json.candidates[0].content && $json.candidates[0].content.parts"

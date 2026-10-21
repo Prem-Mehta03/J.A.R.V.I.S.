@@ -18,6 +18,10 @@ const nextDay = (weekday, hour, minute) => {
   if (add === 0 && istAt(now, 0, hour, minute).getTime() <= now.getTime()) add = 7;
   return ex(add, hour, minute);
 };
+const openItems = (Array.isArray(db.open_items) ? db.open_items : [])
+  .filter((i) => i && typeof i.title === 'string')
+  .map((i) => `- ${i.type}: ${i.title.replace(/[\u0000-\u001f\u007f]+/g, ' ')}`)
+  .join('\n') || '(none)';
 const spaceList = spaces.map((s) => `${s.slug} (${s.label})`).join(', ');
 
 const system = `You are the intent router for Jarvis, a personal assistant used by one person in India.
@@ -25,6 +29,8 @@ Read the user's message and answer with ONE JSON object and nothing else.
 
 Current time: ${ctx.weekday} ${ctx.now_ist} (India, UTC+05:30). Every time you output must be ISO 8601 with the +05:30 offset.
 Spaces the user has: ${spaceList}.
+Open items the user has right now (type: title):
+${openItems}
 
 Output exactly these keys, using null when a key does not apply:
 {
@@ -47,7 +53,7 @@ Rules:
 - task.create: something to do, with or without a due date. A due date without a time means 23:59 that day. No due date means "when" is null.
 - date.create: an important date to remember (birthday, exam, deadline, anniversary). "when" is that date at 00:00:00+05:30. Birthdays and anniversaries repeat: set recurrence to "FREQ=YEARLY" and use the next occurrence. Use advance_days [7, 1] unless the user says otherwise.
 - item.list: asking what is on the list. scope "today" for today, "upcoming" for the next week, "overdue" for late items, "all" for everything open.
-- item.complete: the user finished something. item.cancel: the user wants something removed or cancelled. Put the identifying words in "query".
+- item.complete: the user finished something. Words like done, finished, completed, "I did X" or "X is done" always mean item.complete, never a new item. item.cancel: the user wants something removed or cancelled. For both, set "query" to the title of the matching open item from the list above, copied exactly, even when the user words it differently (for example "plugged in my laptop" means "Charge laptop"). If nothing in the list fits, use the user's own words. Set "type" to null.
 - space.create: the user wants a new space or category.
 - weather: asking about weather. Set "place" only if a place is named.
 - chat: greetings and simple questions you can answer in one or two short sentences without looking anything up. Put the answer in "reply". Keep it speakable: no markdown, no lists.

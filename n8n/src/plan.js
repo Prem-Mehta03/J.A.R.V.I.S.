@@ -48,9 +48,16 @@ if (g && Array.isArray(g.parts)) {
 if (!text) {
   return ask("I couldn't reach my language models just now. Please try again in a minute.", { ok: false, error: 'llm_unavailable' });
 }
-const L = parseLlmJson(text);
+let L = parseLlmJson(text);
 if (!L || typeof L.intent !== 'string') {
   return ask("Sorry, I didn't understand that. Could you say it another way?", { ok: false, error: 'bad_llm_output', provider });
+}
+
+// "Done, charge laptop" / "I finished X" is always a request to close something, whatever the model decided.
+const DONE_LEAD = /^\s*(?:(?:i|i've|i have|ive)\s+)?(?:done|finished|completed)\b[\s,:.-]*(?:with\s+)?(\S.*)$/i;
+const doneMatch = DONE_LEAD.exec(ctx.text || '');
+if (doneMatch && ['reminder.create', 'task.create', 'date.create', 'chat', 'clarify', 'unsupported'].includes(L.intent)) {
+  L = { intent: 'item.complete', query: doneMatch[1] };
 }
 
 // ---- 2. Validation helpers ----
@@ -87,9 +94,16 @@ where status = 'open'
 order by coalesce(remind_at, due_at) nulls last, created_at
 limit 20`;
 
-const CLOSE_SQL = `with matches as (
+// Matches by word stems, so "charging laptop" finds "Charge laptop". All stems must appear in the title.
+// $1 type or 'any', $2 stems as a text array literal, $3 new status, $4 the words as said (an exact title wins).
+const CLOSE_SQL = `with cand as (
   select id, type, title from jarvis.items
-  where status = 'open' and ($1 = 'any' or type = $1) and title ilike '%' || $2 || '%'
+  where status = 'open' and type in ('reminder', 'task', 'date') and ($1 = 'any' or type = $1)
+    and not exists (select 1 from unnest($2::text[]) s where lower(title) not like '%' || s || '%')
+),
+matches as (
+  select * from cand
+  where lower(title) = lower($4) or not exists (select 1 from cand where lower(title) = lower($4))
 ),
 updated as (
   update jarvis.items set status = $3
@@ -99,6 +113,23 @@ updated as (
 select (select count(*) from matches) as match_count,
        (select json_agg(json_build_object('id', m.id, 'title', m.title, 'type', m.type)) from (select * from matches limit 5) m) as candidates,
        (select row_to_json(u) from updated u) as updated`;
+
+const STOP_WORDS = new Set(['the', 'a', 'an', 'my', 'to', 'with', 'for', 'of', 'on', 'in', 'and', 'it', 'that', 'this', 'is', 'up', 'off', 'i']);
+const stem = (word) => {
+  let w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (w.length > 4 && w.endsWith('ing')) w = w.slice(0, -3);
+  else if (w.length > 3 && w.endsWith('ed')) w = w.slice(0, -2);
+  else if (w.length > 3 && w.endsWith('es')) w = w.slice(0, -2);
+  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
+  if (w.length > 3 && w.endsWith('e')) w = w.slice(0, -1);
+  if (w.length > 3 && /([^aeiou0-9])\1$/.test(w) && !/(ll|ss|ff|zz)$/.test(w)) w = w.slice(0, -1);
+  return w;
+};
+const stemsOf = (query) => {
+  const words = query.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const kept = words.filter((w) => !STOP_WORDS.has(w.toLowerCase()));
+  return [...new Set((kept.length ? kept : words).map(stem).filter(Boolean))];
+};
 
 const SPACE_SQL = `insert into jarvis.spaces (slug, label) values ($1, $2)
 on conflict (slug) do nothing
@@ -194,15 +225,15 @@ switch (L.intent) {
   case 'item.cancel': {
     const closing = L.intent === 'item.complete' ? 'done' : 'cancelled';
     const query = cleanText(L.query || L.title, 100);
-    if (!query) return ask(closing === 'done' ? 'Which item did you finish?' : 'Which item should I cancel?', { provider });
-    const type = validType(L.type);
+    const stems = stemsOf(query);
+    if (!query || !stems.length) return ask(closing === 'done' ? 'Which item did you finish?' : 'Which item should I cancel?', { provider });
     return finish({
       intent: L.intent,
       action: 'sql',
       sql: CLOSE_SQL,
-      params: [type, escapeLike(query), closing],
+      params: ['any', '{' + stems.join(',') + '}', closing, query],
       provider,
-      data: { type, query, closing },
+      data: { type: 'any', query, closing },
     });
   }
 

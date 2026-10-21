@@ -103,3 +103,9 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **The id link lives in the reminder's Notes** (`jarvis:<id>`). The server reads only id-shaped text from them, so stray notes cannot break the SQL or the sync.
 - **Open question:** whether a due time on the phone copy also rings on its own (a second alert beside Bark). Decide after seeing it on the device.
 
+## Closing items by words and voice (Oct 21)
+
+- **"Done X", "finished X", "completed X" always close, never create.** Code checks the start of the message, because the model once turned "Done, charge laptop" into a new task. It only overrides when the model picked a create, chat, clarify or unsupported intent.
+- **Matching uses word stems**, not exact text: "charging", "charged" and "charge" all reduce to the same stem, and every stem must appear in the title. Closing looks at reminders, tasks and dates together (the model's type guess is ignored, since it was a source of misses). An exact title wins over partial matches; several partial matches make Jarvis ask which one.
+- **Different words with the same meaning** ("plug in my laptop" for "Charge laptop") are handled by the model: the router prompt now lists the open items (up to 60) and tells it to copy the closest title as the query.
+

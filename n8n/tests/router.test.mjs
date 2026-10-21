@@ -196,13 +196,38 @@ test('item.list works out the time window', async () => {
   assert.equal(odd.params[4], 'upcoming');
 });
 
-test('item.complete and item.cancel escape wildcard characters', async () => {
+test('item.complete and item.cancel match by word stems and only ever bind safe text', async () => {
   const done = await plan('x', gemini(intent({ intent: 'item.complete', type: 'task', query: 'DSA assignment' })));
-  assert.deepEqual(done.params, ['task', 'DSA assignment', 'done']);
-  const cancel = await plan('x', gemini(intent({ intent: 'item.cancel', query: '100%_done\\' })));
-  assert.deepEqual(cancel.params, ['any', '100\\%\\_done\\\\', 'cancelled']);
+  assert.deepEqual(done.params, ['any', '{dsa,assignment}', 'done', 'DSA assignment']);
+  const cancel = await plan('x', gemini(intent({ intent: 'item.cancel', query: "x'; drop table jarvis.items;--" })));
+  assert.match(cancel.params[1], /^\{[a-z0-9,]+\}$/);
+  assert.ok(!cancel.sql.includes('drop'));
   const missing = await plan('x', gemini(intent({ intent: 'item.complete' })));
   assert.equal(missing.action, 'reply');
+  const symbols = await plan('x', gemini(intent({ intent: 'item.complete', query: '%_' })));
+  assert.equal(symbols.action, 'reply');
+});
+
+test('different wording of the same task gives the same stems', async () => {
+  const stems = async (q) => (await plan('x', gemini(intent({ intent: 'item.complete', query: q })))).params[1];
+  const base = await stems('charge laptop');
+  for (const q of ['charging laptop', 'charged the laptop', 'Charge my laptop', 'Charges laptop']) assert.equal(await stems(q), base, q);
+  assert.equal(base, '{charg,laptop}');
+  assert.equal(await stems('running'), '{run}');
+  assert.equal(await stems('call home'), '{call,hom}');
+});
+
+test('"done X" and "I finished X" close an item even if the model wanted to create one', async () => {
+  for (const [text, intentName] of [['Done, charge laptop', 'task.create'], ['I finished charge laptop', 'task.create'], ['finished the DSA lab', 'reminder.create'], ['done with charging laptop', 'chat']]) {
+    const p = await plan(text, gemini(intent({ intent: intentName, title: 'Charge laptop', when: null })));
+    assert.equal(p.intent, 'item.complete', text);
+    assert.equal(p.action, 'sql');
+  }
+  const first = await plan('Done, charge laptop', gemini(intent({ intent: 'task.create', title: 'x' })));
+  assert.equal(first.data.query, 'charge laptop');
+  // Other sentences are left to the model.
+  const other = await plan('add a task to do the done list', gemini(intent({ intent: 'task.create', title: 'Do the done list' })));
+  assert.equal(other.intent, 'task.create');
 });
 
 test('space.create makes a safe slug', async () => {
