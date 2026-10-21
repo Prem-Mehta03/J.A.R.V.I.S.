@@ -1,0 +1,4 @@
+body { margin: 0; padding: 24px 16px; background: #0f131c; color: #e4e8f1; font: 16px/1.5 -apple-system, system-ui, sans-serif; }
+pre { white-space: pre-wrap; word-break: break-word; background: #1a1f2b; padding: 14px; border-radius: 12px; font: 13px/1.6 ui-monospace, Menlo, monospace; }
+button { height: 48px; padding: 0 20px; border: 0; border-radius: 24px; background: #ffb951; color: #3d2600; font: 600 16px system-ui; }
+a { color: #ffb951; }

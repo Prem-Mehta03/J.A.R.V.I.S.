@@ -132,8 +132,17 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Digest only, no email pushes** (your choice). Important mail is shown in the Email tab, read out on request, and goes into the M9 morning brief.
 - **Existing tables reused.** `email_rules` (match_type sender or domain, match_value) and `email_feedback` come from 001_init.sql; only `email_messages` is new (migration 008). A first draft of 008 recreated the other two with different columns and would have been silently skipped on the real database; caught by running against the real schema.
 - **Order of sorting:** your rules, then Gmail's Promotions tab, then the model. Corrections create a sender rule, relabel that sender's mail of the last 30 days, and are shown to the model as examples (last 15).
-- **What leaves the workflow:** only sender, subject and 120 characters of snippet go to Gemini or Groq; the stored row has sender, subject and a 160 character snippet. The Gmail node returns the raw message, and the Collect node drops everything else immediately. Email text is treated as untrusted in the prompt, and the output is limited to three labels by code.
+- **What leaves the workflow:** only sender, subject and 120 characters of snippet go to Gemini or Groq; the stored row has sender, subject and a 160 character snippet. Gmail is called directly (list, then get in metadata format for new mail only), so bodies are never downloaded. The first version used the Gmail node's full messages, which with the 512 MB Render limit risked running n8n out of memory. Email text is treated as untrusted in the prompt, and the output is limited to three labels by code.
 - **Unlabelled mail is not stored**, so a failed model call is simply retried at the next check. Mail older than 30 days is deleted from `email_messages`.
 - **One workflow, two triggers:** a 15 minute schedule and the `jarvis-email-refresh` webhook (the app's Refresh button) share the same nodes.
 - **Chat corrections** only change anything when the words point at one sender; otherwise Jarvis asks. A whole free-mail domain cannot be made a rule.
 - **M9 change:** no Sunday summary; instead a college work summary of all open tasks in the Study tab.
+
+## Brief (M9)
+
+- **Push at the chosen time, not at first unlock.** iOS gives no "first unlock after 7" trigger to a server. The brief is pushed at 7:00 AM (change by chat: "send my brief at 8") and waits on the lock screen; the Brief tab always builds a fresh one on open. An optional Shortcuts automation (wake alarm stopped) can run the Jarvis brief shortcut.
+- **Schedule:** a 5 minute check sends once a day, from `brief_time` up to 4 hours later, and records `brief_last_sent` (IST date). If Render is asleep at that moment the keep-alive must wake it.
+- **Bark gets a short version**, the app the full one, voice reads `spoken`. Calendar is read-only here.
+- **Cleanup scope:** only reminders from before today that fired, are not repeating, have no parent (exam alerts excluded). "Close all" in the app or "close them" by chat; "keep X" skips matches.
+- **College work summary** replaces the Sunday summary: overdue, today, upcoming, no date; shown in the brief and on request.
+- Workflow 08 does not save successful executions, to keep memory low on Render.

@@ -143,3 +143,20 @@ test('ideaParts splits the first line from the rest', () => {
   assert.deepEqual(L.ideaParts('\nBudget app\nreads texts\n\nsorts'), { first: 'Budget app', more: 'reads texts\n\nsorts' });
   assert.deepEqual(L.ideaParts('one line'), { first: 'one line', more: '' });
 });
+
+test('exams are upcoming college dates in time order, with the days left; college work is college tasks', () => {
+  const now = new Date('2026-10-21T10:30:00+05:30');
+  const items = [
+    { id: 'a', type: 'date', space: 'college', title: 'Compre', due_at: '2026-11-10T09:30:00+05:30' },
+    { id: 'b', type: 'date', space: 'college', title: 'Midsem', due_at: '2026-10-25T14:00:00+05:30' },
+    { id: 'c', type: 'date', space: 'college', title: 'Old', due_at: '2026-10-01T00:00:00+05:30' },
+    { id: 'd', type: 'date', space: 'personal', title: 'Birthday', due_at: '2026-10-30T00:00:00+05:30' },
+    { id: 'e', type: 'task', space: 'college', title: 'Lab report', due_at: null },
+    { id: 'f', type: 'task', space: 'personal', title: 'Buy pens', due_at: null },
+  ];
+  const ex = L.listExams(items, now);
+  assert.deepEqual(ex.map((e) => [e.item.id, e.days, e.date]), [['b', 4, '2026-10-25'], ['a', 20, '2026-11-10']]);
+  assert.deepEqual(L.collegeWork(items).map((i) => i.id), ['e']);
+  assert.equal(L.hasClock(new Date('2026-11-10T09:30:00+05:30')), true);
+  assert.equal(L.hasClock(new Date('2026-11-10T00:00:00+05:30')), false);
+});

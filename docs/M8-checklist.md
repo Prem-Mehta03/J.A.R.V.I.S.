@@ -14,9 +14,11 @@ Supabase, SQL Editor, paste `db/migrations/008_email.sql`, Run. It adds one tabl
 
 ## 3. n8n (10 minutes)
 
-1. **Import the new workflow** `n8n/workflows/07-email.json` (menu, Import from file). It has two Gmail nodes, **Fetch personal** and **Fetch college**. Open each and pick the matching Gmail credential you made in M0. Also set Jarvis token (Webhook), Gemini key, Groq key and Supabase Postgres on the nodes that ask. Save and make it **Active**.
+1. **Import the new workflow** `n8n/workflows/07-email.json` (menu, Import from file). It talks to Gmail through four request nodes, **List personal**, **Get personal**, **List college** and **Get college**. Open each and pick the matching Gmail credential you made in M0 (the credential type is Gmail OAuth2). They ask Gmail only for sender, subject, date, snippet and labels, never message bodies, and only for mail that is not stored yet. Also set Jarvis token (Webhook), Gemini key, Groq key and Supabase Postgres on the nodes that ask. Save and make it **Active**.
 2. **Re-import** `01-chat-router.json` and `03-items-api.json` the usual way (import, reconnect credentials, Active, deactivate the old copies).
-3. Open workflow 07 and press **Execute workflow** once. In "Fetch personal" and "Fetch college" you should see mail. If a node shows an error, the Gmail credential needs reconnecting (this is the check that was planned for around 28 October).
+3. Do not press Execute in the n8n editor: a manual run sends every message to your browser and can run Render out of memory. Make it Active, then test from the app (step 4, Refresh). If the reply says it could not read an account, that Gmail credential needs reconnecting (this is the check planned for around 28 October).
+
+Successful runs are not kept in n8n's history (the setting is in the file). Otherwise each run would store the raw mail, bodies included, in your database. Error runs are still kept.
 
 It then runs by itself every 15 minutes while Render is awake (the cron-job.org ping keeps it awake), and whenever you tap Refresh in the app.
 
@@ -43,4 +45,4 @@ For each new mail, in order: (1) your rules, (2) Gmail's own Promotions tab mean
 
 Tested with a real Postgres and a fake Gmail: both inboxes, repeat checks adding nothing twice, rules and the Promotions tab, correction relabelling the sender's other mail, one account failing while the other works, chat digest and corrections, and the Email tab in desktop Chromium.
 
-**Not tested:** the real Gmail node. The workflow asks Gmail for the raw message format and reads the From, Subject and date headers from it, which is Gmail's standard format; if your first run shows 0 mail or odd senders, send me the output of "Fetch personal" (without bodies) and I will adjust. Also not tested: how well Gemini sorts your real mail. Expect to correct a few at first.
+**Not tested:** the real Gmail connection. The workflow calls Gmail's standard API (list recent inbox mail, then "get" in metadata format for new ones) with your existing Gmail credential; if the app says it could not read an account, or shows 0 mail or odd senders, send me the error text or the output of "Get personal" and I will adjust. One possible catch: if your Gmail permission turns out not to allow the metadata format, the error will say so. Also not tested: how well Gemini sorts your real mail. Expect to correct a few at first.

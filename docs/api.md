@@ -136,3 +136,11 @@ In one database statement it marks the `done` ids as done (open reminders and ta
 `POST /webhook/jarvis-email-refresh` (same token header) checks both Gmail accounts now and answers `{ok, reply, added, important, errors}`. It can take up to a minute.
 
 Chat intents: `email.digest` (optional `account`) and `email.correct` (`query`, `label`, optional `account`).
+
+## Brief (M9)
+
+`POST /webhook/jarvis-brief` (token header) builds today's brief now and answers JSON: `ok, today, greeting, date_text, weather, has_home, schedule` (calendar events, reminders and dates today), `calendar_ok, tasks_due, dates_soon, habits, college` (`total, overdue, today, upcoming, none, top`), `email` (`synced, personal, college`), `stale`, `spoken` (text to read aloud), `push` (`title, body`). It never sends a push; the 5 minute schedule does that once a day. Jarvis's own calendar backup events (description starts "Sent by Jarvis") are left out.
+
+`jarvis-items` action `close_stale` closes reminders from before today that fired but were never done (not repeating, not exam alerts) and answers `{ok, closed, titles, reply}`.
+
+Chat intents: `college.summary`, `cleanup.close` (optional keep words: "close them but keep hostel fees"), `brief.settime` (HH:MM, 04:00 to 21:59). The app also routes "brief me" style phrases to `jarvis-brief`.

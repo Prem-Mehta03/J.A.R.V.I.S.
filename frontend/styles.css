@@ -312,3 +312,11 @@ textarea { width: 100%; padding: 14px 16px; border-radius: 16px; border: 0; outl
 .mail-sheet .msnip { margin: 8px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .mail-sheet .mnote { margin: 12px 0; font-size: 13px; color: var(--outline); }
 .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+.wx { display: flex; align-items: center; gap: 14px; margin: 16px 0 4px; padding: 14px 16px; border-radius: 12px; background: var(--low); color: var(--gold); }
+.wx b { color: var(--ink); font: 600 18px/24px var(--font); }
+.wx .m { color: var(--muted); font-size: 14px; line-height: 20px; }
+.brow { align-items: flex-start; }
+.brow .tm { flex: none; min-width: 64px; font: 600 13px/22px var(--font); color: #ffb951; }
+.note { margin: 10px 4px 0; font-size: 13px; line-height: 18px; color: var(--outline); }
+.briefbtns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 14px 0 0; }

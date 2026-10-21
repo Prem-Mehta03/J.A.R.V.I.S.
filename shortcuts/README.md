@@ -10,6 +10,7 @@ Built during M0, M5 and M6. Notes and exported links go here.
 | Jarvis Sync | Adds new Jarvis reminders to the "Jarvis" Reminders list and reports completed ones back (see docs/M6-checklist.md) | M6 | Steps written, not built yet |
 | Jarvis done | "Jarvis, done with X": marks X complete in Jarvis (uses the chat route) | M6 | Steps written, not built yet |
 | Jarvis idea | Dictate (stop on tap) and save the text as an idea (see docs/M7-checklist.md) | M7 | Steps written, not built yet |
+| Jarvis study | Dictate college work and file it under College (see docs/M7-checklist.md) | M7 | Steps written, not built yet |
 
 ## What M0 showed
 
@@ -21,3 +22,5 @@ Built during M0, M5 and M6. Notes and exported links go here.
 
 - The shared secret token is typed into each shortcut by hand. Never commit it, and never share a screenshot that shows it.
 - Every Shortcut should set a long timeout. If the free Render service is asleep, the first call can take about a minute.
+
+| Jarvis brief | POST `/webhook/jarvis-brief` with the token header, take `spoken`, Speak it (see docs/M9-checklist.md) | M9 | Steps written, not built yet |

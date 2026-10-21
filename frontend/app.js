@@ -5,6 +5,7 @@ import { canSpeak, deviceVoices, createSpeaker } from './voice.js';
 import { createVoiceMode } from './voicemode.js';
 import { createLife } from './lifeviews.js';
 import { createEmail } from './emailview.js';
+import { createBrief, BRIEF_RE } from './briefview.js';
 
 const LS = { url: 'jarvis.url', token: 'jarvis.token', cache: 'jarvis.cache', chat: 'jarvis.chat', voice: 'jarvis.voice' };
 const store = {
@@ -87,7 +88,7 @@ const voiceMode = createVoiceMode({
     form.append('audio', blob, 'voice.' + (blob.type.includes('webm') ? 'webm' : blob.type.includes('ogg') ? 'ogg' : 'm4a'));
     return callForm('jarvis-transcribe', form);
   },
-  ask: (text) => call('jarvis', { text, source: 'voice' }),
+  ask: (text) => chatCall(text, 'voice'),
   onExit: () => { setOrbMode('idle'); refresh(); },
 });
 
@@ -96,6 +97,17 @@ const saveCache = () => store.set(LS.cache, JSON.stringify({ items: state.items,
 const life = createLife({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), saveCache: () => saveCache(), emptyBox: (a, b) => emptyBox(a, b), group: (...a) => group(...a), openSheet: (i) => openSheet(i) });
 
 const mailv = createEmail({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), emptyBox: (a, b) => emptyBox(a, b) });
+
+const briefv = createBrief({ el, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), emptyBox: (a, b) => emptyBox(a, b), speak: (t) => readAloud(t), go: (v) => go(v) });
+
+// "Brief me" goes to the brief; everything else goes to the chat brain.
+async function chatCall(text, source) {
+  if (BRIEF_RE.test(text.trim())) {
+    const r = await call('jarvis-brief', {}, 60000);
+    return r && r.ok !== false && r.spoken ? { ok: true, intent: 'brief', reply: r.spoken } : (r || { ok: false, reply: 'I could not build the brief.' });
+  }
+  return call('jarvis', { text, source });
+}
 
 async function refresh() {
   // Only say "waking up" if the server is really slow (a warm server answers in a few seconds).
@@ -131,7 +143,7 @@ async function ask(text) {
   state.chat.push({ who: 'me', text }); state.busy = true; state.waking = false;
   setOrbMode('thinking'); renderMain();
   wakeTimer = setTimeout(() => { state.waking = true; renderMain(); }, WAKE_MS);
-  const r = await call('jarvis', { text, source: 'app' });
+  const r = await chatCall(text, 'app');
   clearTimeout(wakeTimer); state.busy = false; state.waking = false;
   state.chat.push({ who: 'bot', text: r.reply || 'No answer came back.', err: r.ok === false, detail: r.detail || '', at: new Date().toISOString() });
   state.chat = state.chat.slice(-40); store.set(LS.chat, JSON.stringify(state.chat));
@@ -292,7 +304,7 @@ function datesView(now) {
 }
 
 // ---------- render ----------
-const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView, study: life.studyView, email: mailv.emailView };
+const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView, study: life.studyView, email: mailv.emailView, brief: briefv.briefView };
 
 function renderMain() {
   const now = new Date();
@@ -309,9 +321,16 @@ function renderDrawer() {
   const open = state.drawer;
   ui.drawer.classList.toggle('open', open); ui.scrim.classList.toggle('open', open);
   ui.drawer.inert = !open; ui.drawer.setAttribute('aria-hidden', String(!open));
-  const todayN = (() => { const g = L.groupToday(state.items, now); return g.rail.length + g.overdue.length; })();
-  const cnt = (type) => state.items.filter((i) => i.type === type).length;
-  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')], ['dates', 'calendar', 'Dates', L.listDates(state.items, now).length], ['study', 'book', 'Study', L.listExams(state.items, now).length + L.collegeWork(state.items).length], ['habits', 'flame', 'Habits', state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length], ['ideas', 'bulb', 'Ideas', state.ideas.length], ['email', 'mail', 'Email', mailv.badge()]];
+  // A count that cannot be worked out (for example a file of the app that is out of date) shows as nothing, and the menu still draws.
+  const safe = (fn) => { try { const n = fn(); return Number.isFinite(n) ? n : null; } catch (e) { return null; } };
+  const todayN = safe(() => { const g = L.groupToday(state.items, now); return g.rail.length + g.overdue.length; });
+  const cnt = (type) => safe(() => state.items.filter((i) => i.type === type).length);
+  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['brief', 'sparkle', 'Brief', briefv.badge()], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')],
+    ['dates', 'calendar', 'Dates', safe(() => L.listDates(state.items, now).length)],
+    ['study', 'book', 'Study', safe(() => L.listExams(state.items, now).length + L.collegeWork(state.items).length)],
+    ['habits', 'flame', 'Habits', safe(() => state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length)],
+    ['ideas', 'bulb', 'Ideas', safe(() => state.ideas.length)],
+    ['email', 'mail', 'Email', safe(() => mailv.badge())]];
   const spaces = [{ slug: 'all', label: 'All spaces' }, ...state.spaces];
   ui.drawer.replaceChildren(
     el('div', { class: 'd-head' },
