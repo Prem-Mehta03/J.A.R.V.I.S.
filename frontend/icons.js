@@ -1,6 +1,9 @@
 // Small line-icon set drawn as inline SVG (no icon font, so the app works offline and under the strict CSP).
 const NS = 'http://www.w3.org/2000/svg';
 const D = {
+  flame: { p: ['M12 3c1 3.5 5 5.5 5 10.5a5 5 0 0 1-10 0c0-2 1-3.2 2-4.2 0 2 1 3 2 3 0-3-1-5 1-9.3z'] },
+  bulb: { p: ['M9 18h6', 'M10 21h4', 'M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z'] },
+  edit: { p: ['M4 20h4L19 9l-4-4L4 16v4z', 'M13.5 6.5l4 4'] },
   menu: { p: ['M4 7h16', 'M4 12h16', 'M4 17h16'] },
   send: { p: ['M12 19V5', 'M5 12l7-7 7 7'] },
   mic: { r: [[9, 3, 6, 11, 3]], p: ['M5 11a7 7 0 0 0 14 0', 'M12 18v3'] },

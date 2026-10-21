@@ -178,3 +178,67 @@ export function searchTitle(list, q) {
   const s = String(q || '').trim().toLowerCase();
   return s ? list.filter((e) => String((e.item || e).title).toLowerCase().includes(s)) : list;
 }
+
+// ---- Habits ----
+// Dates are India calendar days written 2026-10-21. A habit's `dates` are the days it was done.
+const pad = (n) => String(n).padStart(2, '0');
+export const dateStr = (d) => { const s = shift(d); return `${s.getUTCFullYear()}-${pad(s.getUTCMonth() + 1)}-${pad(s.getUTCDate())}`; };
+const dayNum = (str) => Math.round(Date.UTC(Number(str.slice(0, 4)), Number(str.slice(5, 7)) - 1, Number(str.slice(8, 10))) / 86400000);
+const fromDayNum = (n) => { const d = new Date(n * 86400000); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`; };
+const weekdayOf = (str) => (new Date(dayNum(str) * 86400000).getUTCDay() + 6) % 7; // Monday = 0
+
+// The current streak counts back from today, or from yesterday while today is still open, so one day without a check-in does not erase it until the day has passed.
+export function streakInfo(dates, today) {
+  const days = [...new Set((dates || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).map(dayNum))].sort((a, b) => a - b);
+  const set = new Set(days);
+  const t = dayNum(today);
+  let current = 0;
+  for (let d = set.has(t) ? t : t - 1; set.has(d); d--) current++;
+  let best = 0, run = 0, prev = null;
+  for (const d of days) { run = prev !== null && d === prev + 1 ? run + 1 : 1; if (run > best) best = run; prev = d; }
+  return { current, best, total: days.length, doneToday: set.has(t) };
+}
+
+// The last seven days ending today, for the small strip on each habit.
+export function lastDays(dates, today, n = 7) {
+  const set = new Set(dates || []);
+  const t = dayNum(today);
+  return Array.from({ length: n }, (_, i) => {
+    const date = fromDayNum(t - (n - 1 - i));
+    return { date, letter: 'MTWTFSS'[weekdayOf(date)], done: set.has(date), today: date === today };
+  });
+}
+
+// How many days this week (Monday to Sunday) the habit was done.
+export function weekCount(dates, today) {
+  const start = dayNum(today) - weekdayOf(today);
+  return new Set((dates || []).filter((d) => { const n = dayNum(d); return n >= start && n < start + 7; })).size;
+}
+
+// A month as rows of seven (Monday first). `null` cells pad the first and last week.
+export function monthGrid(year, month) {
+  const first = `${year}-${pad(month + 1)}-01`;
+  const count = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const cells = Array(weekdayOf(first)).fill(null);
+  for (let d = 1; d <= count; d++) cells.push({ date: `${year}-${pad(month + 1)}-${pad(d)}`, day: d });
+  while (cells.length % 7) cells.push(null);
+  return { label: `${MONTHS[month]} ${year}`, cells };
+}
+
+export function shiftMonth({ y, m }, delta) {
+  const t = y * 12 + m + delta;
+  return { y: Math.floor(t / 12), m: ((t % 12) + 12) % 12 };
+}
+
+// Adds or removes one day from a list of done days.
+export function withDay(dates, date, done) {
+  const rest = (dates || []).filter((d) => d !== date);
+  return done ? [...rest, date].sort() : rest;
+}
+
+// ---- Ideas ----
+export function ideaParts(body) {
+  const lines = String(body || '').split('\n');
+  const first = lines.find((l) => l.trim()) || '';
+  return { first: first.trim(), more: lines.slice(lines.indexOf(first) + 1).join('\n').trim() };
+}

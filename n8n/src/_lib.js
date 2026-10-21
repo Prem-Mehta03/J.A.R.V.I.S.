@@ -92,3 +92,25 @@ function parseLlmJson(text) {
     return null;
   }
 }
+
+// ---- habits ----
+// The India calendar date of a moment, as 2026-10-21.
+function istDateStr(date) {
+  const d = toIst(date);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+const dayNumber = (str) => Math.round(Date.UTC(Number(str.slice(0, 4)), Number(str.slice(5, 7)) - 1, Number(str.slice(8, 10))) / 86400000);
+
+// Streak numbers from the days a habit was done. The current streak counts back from today, or from yesterday
+// when today is not done yet, so it only drops to zero once a whole day has been missed.
+function streakInfo(dates, today) {
+  const days = [...new Set((dates || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).map(dayNumber))].sort((a, b) => a - b);
+  const set = new Set(days);
+  const t = dayNumber(today);
+  let current = 0;
+  for (let d = set.has(t) ? t : t - 1; set.has(d); d--) current++;
+  let best = 0, run = 0, prev = null;
+  for (const d of days) { run = prev !== null && d === prev + 1 ? run + 1 : 1; if (run > best) best = run; prev = d; }
+  return { current, best, total: days.length, doneToday: set.has(t) };
+}
+

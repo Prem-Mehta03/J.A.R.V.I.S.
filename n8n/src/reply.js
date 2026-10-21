@@ -134,8 +134,8 @@ if (plan.action === 'weather') {
 // plan.action === 'sql': the database node ran just before this one.
 // A query that returns nothing still passes through as one empty item, so empty rows are filtered out here.
 const rows = $input.all().map((i) => i.json).filter((r) => r && Object.keys(r).length > 0);
-const emptyIsOk = plan.intent === 'item.list' || plan.intent === 'space.create';
-const errored = rows.length > 0 && rows[0].error !== undefined && rows[0].id === undefined && rows[0].match_count === undefined;
+const emptyIsOk = ['item.list', 'space.create', 'habit.list'].includes(plan.intent);
+const errored = rows.length > 0 && rows[0].error !== undefined && rows[0].id === undefined && rows[0].match_count === undefined && rows[0].total === undefined;
 if (errored || (rows.length === 0 && !emptyIsOk)) {
   return done({ ok: false, reply: "I couldn't reach my database just now. Please try again in a minute.", error: 'db_error' });
 }
@@ -206,6 +206,55 @@ switch (plan.intent) {
     }
     const titles = (Array.isArray(r.candidates) ? r.candidates : []).map((c) => c.title);
     return done({ reply: `I found ${count} matches: ${titles.join(', ')}. Which one do you mean?`, needs_clarification: true, candidates: r.candidates || [] });
+  }
+
+  case 'habit.create': {
+    const r = rows[0];
+    return done({
+      reply: r.existing ? `You already track ${r.title}.` : `Okay, I'll track ${r.title}. Say "done ${lowerFirst(r.title)}" each day to check it in.`,
+      habit: { id: r.id, title: r.title },
+    });
+  }
+
+  case 'habit.log': {
+    const r = rows[0];
+    const count = Number(r.match_count);
+    if (count === 0) return done({ reply: `I couldn't find a habit matching "${plan.data.query}". To start one, say "start a habit of" and its name.` });
+    if (count > 1 || !r.habit) {
+      const titles = (Array.isArray(r.candidates) ? r.candidates : []).map((c) => c.title);
+      return done({ reply: `I found ${count} habits: ${titles.join(', ')}. Which one do you mean?`, needs_clarification: true });
+    }
+    const dates = Array.isArray(r.dates) ? r.dates : [];
+    const already = dates.includes(plan.data.day);
+    const info = streakInfo([...dates, plan.data.day], plan.data.today);
+    const when = plan.data.yesterday ? 'yesterday' : 'today';
+    const streak = info.current > 1 ? ` That's a ${info.current} day streak.` : info.current === 1 ? ' That is day one of a new streak.' : '';
+    return done({
+      reply: already ? `${r.habit.title} was already checked in for ${when}.${streak}` : `Logged ${r.habit.title} for ${when}.${streak}`,
+      habit: { id: r.habit.id, title: r.habit.title, streak: info.current },
+    });
+  }
+
+  case 'habit.list': {
+    if (!rows.length) return done({ reply: 'You are not tracking any habits yet. Say "start a habit of" and its name.', habits: [] });
+    const lines = rows.map((h) => {
+      const info = streakInfo(Array.isArray(h.dates) ? h.dates : [], plan.data.today);
+      return { title: h.title, current: info.current, doneToday: info.doneToday };
+    });
+    const spoken = lines.map((h) => `${h.title}, ${h.current ? `${h.current} day streak` : 'no streak'}${h.doneToday ? ', done today' : ''}`);
+    return done({ reply: `You track ${lines.length === 1 ? 'one habit' : lines.length + ' habits'}. ${spoken.join('. ')}.`, habits: lines });
+  }
+
+  case 'idea.create': {
+    return done({ reply: 'Saved your idea.', idea: { id: rows[0].id, title: rows[0].title } });
+  }
+
+  case 'idea.list': {
+    const r = rows[0];
+    const total = Number(r.total) || 0;
+    if (!total) return done({ reply: 'You have no saved ideas yet.' });
+    const latest = (Array.isArray(r.latest) ? r.latest : []).map((i) => i.title);
+    return done({ reply: `You have ${total} ${total === 1 ? 'idea' : 'ideas'}. The latest ${latest.length === 1 ? 'is' : 'are'}: ${latest.join('; ')}.` });
   }
 
   case 'space.create': {

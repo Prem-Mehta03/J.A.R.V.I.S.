@@ -96,3 +96,50 @@ test('search by title', () => {
   assert.equal(L.searchTitle(list, '  ').length, 2);
   assert.equal(L.searchTitle([{ title: 'Lab report' }], 'LAB').length, 1);
 });
+
+// ---- M7: habits ----
+test('streak counts back from today, or from yesterday while today is still open', () => {
+  assert.deepEqual(L.streakInfo(['2026-10-19', '2026-10-20', '2026-10-21'], '2026-10-21'), { current: 3, best: 3, total: 3, doneToday: true });
+  assert.equal(L.streakInfo(['2026-10-19', '2026-10-20'], '2026-10-21').current, 2);
+  assert.equal(L.streakInfo(['2026-10-18', '2026-10-19'], '2026-10-21').current, 0);
+  assert.equal(L.streakInfo([], '2026-10-21').current, 0);
+});
+
+test('best streak finds the longest run, duplicates and junk are ignored, month ends count', () => {
+  const info = L.streakInfo(['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-01', 'x', '2026-10-05', '2026-10-06'], '2026-10-21');
+  assert.equal(info.best, 3);
+  assert.equal(info.total, 5);
+});
+
+test('last seven days and the week count use Monday as the first day', () => {
+  const days = L.lastDays(['2026-10-21', '2026-10-19'], '2026-10-21');
+  assert.equal(days.length, 7);
+  assert.deepEqual(days.map((d) => d.letter).join(''), 'TFSSMTW');
+  assert.equal(days[6].today, true);
+  assert.equal(days[6].done, true);
+  assert.equal(L.weekCount(['2026-10-19', '2026-10-20', '2026-10-18'], '2026-10-21'), 2); // Sunday the 18th is last week
+});
+
+test('a month grid starts on Monday and pads to whole weeks', () => {
+  const g = L.monthGrid(2026, 9); // October 2026 starts on a Thursday
+  assert.equal(g.label, 'October 2026');
+  assert.equal(g.cells.length % 7, 0);
+  assert.equal(g.cells.slice(0, 3).every((c) => c === null), true);
+  assert.equal(g.cells[3].date, '2026-10-01');
+  assert.equal(g.cells.filter(Boolean).length, 31);
+  assert.equal(L.monthGrid(2028, 1).cells.filter(Boolean).length, 29); // leap year
+  assert.deepEqual(L.shiftMonth({ y: 2026, m: 0 }, -1), { y: 2025, m: 11 });
+  assert.deepEqual(L.shiftMonth({ y: 2026, m: 11 }, 1), { y: 2027, m: 0 });
+});
+
+test('withDay adds and removes a day without duplicates; dateStr reads the India day', () => {
+  assert.deepEqual(L.withDay(['2026-10-20'], '2026-10-19', true), ['2026-10-19', '2026-10-20']);
+  assert.deepEqual(L.withDay(['2026-10-20'], '2026-10-20', true), ['2026-10-20']);
+  assert.deepEqual(L.withDay(['2026-10-20'], '2026-10-20', false), []);
+  assert.equal(L.dateStr(new Date('2026-10-20T19:00:00Z')), '2026-10-21'); // 12:30 am in India
+});
+
+test('ideaParts splits the first line from the rest', () => {
+  assert.deepEqual(L.ideaParts('\nBudget app\nreads texts\n\nsorts'), { first: 'Budget app', more: 'reads texts\n\nsorts' });
+  assert.deepEqual(L.ideaParts('one line'), { first: 'one line', more: '' });
+});

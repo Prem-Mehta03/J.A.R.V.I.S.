@@ -49,15 +49,38 @@ if (!text) {
   return ask("I couldn't reach my language models just now. Please try again in a minute.", { ok: false, error: 'llm_unavailable' });
 }
 let L = parseLlmJson(text);
+
+const STOP_WORDS = new Set(['the', 'a', 'an', 'my', 'to', 'with', 'for', 'of', 'on', 'in', 'and', 'it', 'that', 'this', 'is', 'up', 'off', 'i']);
+const stem = (word) => {
+  let w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (w.length > 4 && w.endsWith('ing')) w = w.slice(0, -3);
+  else if (w.length > 3 && w.endsWith('ed')) w = w.slice(0, -2);
+  else if (w.length > 3 && w.endsWith('es')) w = w.slice(0, -2);
+  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
+  if (w.length > 3 && w.endsWith('e')) w = w.slice(0, -1);
+  if (w.length > 3 && /([^aeiou0-9])\1$/.test(w) && !/(ll|ss|ff|zz)$/.test(w)) w = w.slice(0, -1);
+  return w;
+};
+const stemsOf = (query) => {
+  const words = query.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const kept = words.filter((w) => !STOP_WORDS.has(w.toLowerCase()));
+  return [...new Set((kept.length ? kept : words).map(stem).filter(Boolean))];
+};
+
 if (!L || typeof L.intent !== 'string') {
   return ask("Sorry, I didn't understand that. Could you say it another way?", { ok: false, error: 'bad_llm_output', provider });
 }
 
 // "Done, charge laptop" / "I finished X" is always a request to close something, whatever the model decided.
+// If the words fit a habit the user tracks (and no open item), it is a habit check-in instead.
 const DONE_LEAD = /^\s*(?:(?:i|i've|i have|ive)\s+)?(?:done|finished|completed)\b[\s,:.-]*(?:with\s+)?(\S.*)$/i;
 const doneMatch = DONE_LEAD.exec(ctx.text || '');
-if (doneMatch && ['reminder.create', 'task.create', 'date.create', 'chat', 'clarify', 'unsupported'].includes(L.intent)) {
-  L = { intent: 'item.complete', query: doneMatch[1] };
+if (doneMatch && ['reminder.create', 'task.create', 'date.create', 'chat', 'clarify', 'unsupported', 'item.complete'].includes(L.intent)) {
+  const q = doneMatch[1];
+  const fits = (titles) => titles.some((t) => stemsOf(q).every((st) => String(t).toLowerCase().includes(st)));
+  L = fits(build.habits || []) && !fits(build.open_titles || [])
+    ? { intent: 'habit.log', query: q, scope: 'today' }
+    : { intent: 'item.complete', query: q };
 }
 
 // ---- 2. Validation helpers ----
@@ -114,22 +137,39 @@ select (select count(*) from matches) as match_count,
        (select json_agg(json_build_object('id', m.id, 'title', m.title, 'type', m.type)) from (select * from matches limit 5) m) as candidates,
        (select row_to_json(u) from updated u) as updated`;
 
-const STOP_WORDS = new Set(['the', 'a', 'an', 'my', 'to', 'with', 'for', 'of', 'on', 'in', 'and', 'it', 'that', 'this', 'is', 'up', 'off', 'i']);
-const stem = (word) => {
-  let w = word.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (w.length > 4 && w.endsWith('ing')) w = w.slice(0, -3);
-  else if (w.length > 3 && w.endsWith('ed')) w = w.slice(0, -2);
-  else if (w.length > 3 && w.endsWith('es')) w = w.slice(0, -2);
-  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1);
-  if (w.length > 3 && w.endsWith('e')) w = w.slice(0, -1);
-  if (w.length > 3 && /([^aeiou0-9])\1$/.test(w) && !/(ll|ss|ff|zz)$/.test(w)) w = w.slice(0, -1);
-  return w;
-};
-const stemsOf = (query) => {
-  const words = query.split(/[^A-Za-z0-9]+/).filter(Boolean);
-  const kept = words.filter((w) => !STOP_WORDS.has(w.toLowerCase()));
-  return [...new Set((kept.length ? kept : words).map(stem).filter(Boolean))];
-};
+
+const HABIT_SQL = `with ex as (select id, title from jarvis.items where type = 'habit' and status = 'active' and lower(title) = lower($1) limit 1),
+ins as (insert into jarvis.items (type, title, status, target_per_week, source)
+        select 'habit', $1, 'active', $2::int, $3 where not exists (select 1 from ex) returning id, title)
+select id, title, false as existing from ins union all select id, title, true from ex`;
+
+const HABIT_LOG_SQL = `with cand as (
+  select id, title from jarvis.items
+  where type = 'habit' and status = 'active'
+    and not exists (select 1 from unnest($1::text[]) s where lower(title) not like '%' || s || '%')
+),
+matches as (
+  select * from cand where lower(title) = lower($3) or not exists (select 1 from cand where lower(title) = lower($3))
+),
+up as (
+  insert into jarvis.habit_logs (habit_id, log_date, done)
+  select id, $2::date, true from matches where (select count(*) from matches) = 1
+  on conflict (habit_id, log_date) do update set done = true returning habit_id
+)
+select (select count(*) from matches) as match_count,
+       (select json_agg(json_build_object('id', m.id, 'title', m.title)) from (select * from matches limit 5) m) as candidates,
+       (select row_to_json(m) from matches m where (select count(*) from matches) = 1) as habit,
+       (select coalesce(json_agg(to_char(l.log_date, 'YYYY-MM-DD')), '[]'::json) from jarvis.habit_logs l
+        where l.habit_id in (select id from matches) and l.done and (select count(*) from matches) = 1) as dates`;
+
+const HABIT_LIST_SQL = `select i.id, i.title, i.target_per_week,
+  (select coalesce(json_agg(to_char(l.log_date, 'YYYY-MM-DD')), '[]'::json) from jarvis.habit_logs l
+   where l.habit_id = i.id and l.done and l.log_date >= (now() at time zone 'Asia/Kolkata')::date - 400) as dates
+from jarvis.items i where i.type = 'habit' and i.status = 'active' order by i.created_at limit 20`;
+
+const IDEA_SQL = `insert into jarvis.items (type, title, body, status, source) values ('idea', $1, $2, 'new', $3) returning id, title`;
+const IDEA_LIST_SQL = `select (select count(*) from jarvis.items where type = 'idea') as total,
+  (select coalesce(json_agg(t), '[]'::json) from (select title from jarvis.items where type = 'idea' order by created_at desc limit 3) t) as latest`;
 
 const SPACE_SQL = `insert into jarvis.spaces (slug, label) values ($1, $2)
 on conflict (slug) do nothing
@@ -236,6 +276,37 @@ switch (L.intent) {
       data: { type: 'any', query, closing },
     });
   }
+
+  case 'habit.create': {
+    const title = cleanTitle(L.title).slice(0, 60);
+    if (!title) return ask('What should the habit be called?', { provider });
+    const target = Number.isInteger(L.target) && L.target >= 1 && L.target <= 7 ? L.target : null;
+    return finish({ intent: 'habit.create', action: 'sql', sql: HABIT_SQL, params: [title, target, sourceName], provider, data: { title } });
+  }
+
+  case 'habit.log': {
+    const query = cleanText(L.query || L.title, 100);
+    const stems = stemsOf(query);
+    if (!query || !stems.length) return ask('Which habit did you do?', { provider });
+    const day = L.scope === 'yesterday' ? istDateStr(addDays(now, -1)) : istDateStr(now);
+    return finish({
+      intent: 'habit.log', action: 'sql', sql: HABIT_LOG_SQL,
+      params: ['{' + stems.join(',') + '}', day, query], provider,
+      data: { query, day, today: istDateStr(now), yesterday: L.scope === 'yesterday' },
+    });
+  }
+
+  case 'habit.list':
+    return finish({ intent: 'habit.list', action: 'sql', sql: HABIT_LIST_SQL, params: [], provider, data: { today: istDateStr(now) } });
+
+  case 'idea.create': {
+    const idea = cleanText(L.text || L.title, 1000);
+    if (!idea) return ask('What is the idea?', { provider });
+    return finish({ intent: 'idea.create', action: 'sql', sql: IDEA_SQL, params: [idea.slice(0, 80), idea, sourceName], provider, data: {} });
+  }
+
+  case 'idea.list':
+    return finish({ intent: 'idea.list', action: 'sql', sql: IDEA_LIST_SQL, params: [], provider, data: {} });
 
   case 'space.create': {
     const label = cleanText(L.space_label || L.title, 40).replace(/[^A-Za-z0-9 &-]/g, '').trim();

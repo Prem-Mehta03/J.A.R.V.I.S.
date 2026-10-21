@@ -22,6 +22,21 @@ Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared
 | `jarvis-sync` | POST | M6 (exists) | iOS Reminders sync: marks reminders ticked off on the phone as done, returns what to add and close there. "Jarvis, done with X" uses `jarvis` instead. |
 | `jarvis-email-feedback` | POST | M8 | "That was an ad" corrections. |
 
+### `POST jarvis-items` additions (M7)
+
+`list` now also returns `habits` (`id, title, target_per_week, dates` with the days done, last 400) and `ideas` (`id, title, body, created_at, updated_at`). New actions, all fixed SQL with bound values:
+
+| action | body | does |
+|---|---|---|
+| `habit_create` | `title`, optional `target_per_week` 1 to 7 | adds a habit (an existing active one of the same name is returned with `existing: true`) |
+| `habit_log` | `id`, `date` (YYYY-MM-DD, not future, within 400 days), `done` (false removes) | checks a habit in or out for a day |
+| `habit_archive` | `id` | removes it from the list |
+| `idea_create` | `text` (up to 4000), optional `source` | saves an idea |
+| `idea_update` | `id`, `text` | edits it |
+| `idea_delete` | `id` | deletes it |
+
+Chat (`jarvis`) also understands `habit.create`, `habit.log`, `habit.list`, `idea.create` and `idea.list`.
+
 ### `POST jarvis` (M2)
 
 Limits: `text` is required and at most 1000 characters. Intents handled: `reminder.create`, `task.create`, `date.create`, `item.list`, `item.complete`, `item.cancel`, `space.create`, `weather`, `chat`, `clarify`.

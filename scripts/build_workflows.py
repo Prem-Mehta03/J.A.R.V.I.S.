@@ -82,7 +82,9 @@ CONTEXT_SQL = """select
      where status = 'open' and type in ('reminder', 'task', 'date')
      order by coalesce(remind_at, due_at) nulls last, created_at
      limit 60
-   ) x) as open_items"""
+   ) x) as open_items,
+  (select coalesce(json_agg(left(title, 60) order by created_at), '[]'::json) from jarvis.items
+   where type = 'habit' and status = 'active') as habits"""
 
 GEMINI_OK = (
     "={{ !!($json.candidates && $json.candidates[0] && $json.candidates[0].content && $json.candidates[0].content.parts"

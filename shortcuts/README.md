@@ -9,6 +9,7 @@ Built during M0, M5 and M6. Notes and exported links go here.
 | Jarvis reminders | Fetches pending reminders from n8n and speaks them | M5 | Not built yet |
 | Jarvis Sync | Adds new Jarvis reminders to the "Jarvis" Reminders list and reports completed ones back (see docs/M6-checklist.md) | M6 | Steps written, not built yet |
 | Jarvis done | "Jarvis, done with X": marks X complete in Jarvis (uses the chat route) | M6 | Steps written, not built yet |
+| Jarvis idea | Dictate (stop on tap) and save the text as an idea (see docs/M7-checklist.md) | M7 | Steps written, not built yet |
 
 ## What M0 showed
 

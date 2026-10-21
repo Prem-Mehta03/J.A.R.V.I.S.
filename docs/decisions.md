@@ -109,3 +109,12 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Matching uses word stems**, not exact text: "charging", "charged" and "charge" all reduce to the same stem, and every stem must appear in the title. Closing looks at reminders, tasks and dates together (the model's type guess is ignored, since it was a source of misses). An exact title wins over partial matches; several partial matches make Jarvis ask which one.
 - **Different words with the same meaning** ("plug in my laptop" for "Charge laptop") are handled by the model: the router prompt now lists the open items (up to 60) and tells it to copy the closest title as the query.
 
+## Habits and ideas (M7)
+
+- **Habit streaks are computed, not stored.** The server sends each habit's done days (last 400) and the app and the chat replies calculate current streak, best streak and totals from them, so a past day can be fixed and everything follows. The current streak counts from yesterday while today is open.
+- **Past days can be fixed from the calendar** (up to 400 days back, never in the future). Check-in and undo are separate actions (`habit_log` with `done` true or false), idempotent per habit and day.
+- **Habits are archived, not deleted**, so history stays. Ideas are really deleted (the app asks for a second tap).
+- **Ideas are one text field.** The title is the first line, the body is everything, up to 4000 characters, line breaks kept. The "Jarvis idea" Shortcut posts the dictated text straight to `jarvis-items`, so the language model never rewords it. In chat the model keeps the user's words (limit 1000 characters).
+- **"Done X" checks the habit list first only if X fits a habit and no open reminder or task.** Otherwise it closes the reminder or task as before.
+- **Study logging dropped.** It would duplicate tasks, reminders and dates in the College space. A weekly target on habits (`target_per_week`) covers "study 5 days a week"; a Sunday summary goes to M9.
+

@@ -371,3 +371,70 @@ test('weather explains missing location, unknown place, and network failure', as
   const weird = await reply(weatherPlan({ place: '', scope: 'today' }, { name: 'X', lat: 999, lon: 0 }), [], { httpRequest: async () => FORECAST });
   assert.equal(weird.error, 'weather_error');
 });
+
+// ---------------------------------------------------------------- M7: habits and ideas
+const withLists = { spaces: SPACES, home_location: null, habits: ['Meditate', 'Gym workout'], open_items: [{ type: 'reminder', title: 'Charge laptop' }] };
+
+test('the prompt lists the open items and the habits, and habits and ideas are no longer "unsupported"', async () => {
+  const [prepared] = await run('Prepare', { input: [{ body: { text: 'hi' } }] });
+  const [b] = await run('Build request', { input: [withLists], nodes: { Prepare: [prepared] } });
+  const prompt = b.gemini_body.systemInstruction.parts[0].text;
+  assert.match(prompt, /Habits the user tracks[\s\S]*- Meditate[\s\S]*- Gym workout/);
+  assert.match(prompt, /habit\.log/);
+  assert.match(prompt, /idea\.create/);
+  assert.doesNotMatch(prompt, /unsupported: habits/);
+});
+
+test('habit.create validates the name and target', async () => {
+  const p = await plan('x', gemini(intent({ intent: 'habit.create', title: 'meditate.', target: 5 })), { db: withLists });
+  assert.deepEqual(p.params, ['Meditate', 5, 'chat']);
+  assert.equal((await plan('x', gemini(intent({ intent: 'habit.create', title: 'Run', target: 12 })), { db: withLists })).params[1], null);
+  assert.equal((await plan('x', gemini(intent({ intent: 'habit.create' })), { db: withLists })).action, 'reply');
+});
+
+test('habit.log matches by stems, uses today or yesterday, and never puts text into the SQL', async () => {
+  const today = await plan('x', gemini(intent({ intent: 'habit.log', query: 'meditated', scope: 'today' })), { db: withLists });
+  assert.deepEqual(today.params, ['{meditat}', '2026-10-21', 'meditated']);
+  const yest = await plan('x', gemini(intent({ intent: 'habit.log', query: "Gym workout'; drop table x;--", scope: 'yesterday' })), { db: withLists });
+  assert.equal(yest.params[1], '2026-10-20');
+  assert.ok(!yest.sql.includes('drop'));
+  assert.equal((await plan('x', gemini(intent({ intent: 'habit.log' })), { db: withLists })).action, 'reply');
+});
+
+test('"done meditate" checks in a habit, "done charge laptop" closes the reminder', async () => {
+  const habit = await plan('Done meditating', gemini(intent({ intent: 'task.create', title: 'Meditating' })), { db: withLists });
+  assert.equal(habit.intent, 'habit.log');
+  const item = await plan('Done, charge laptop', gemini(intent({ intent: 'task.create', title: 'Charge laptop' })), { db: withLists });
+  assert.equal(item.intent, 'item.complete');
+});
+
+test('idea.create keeps the words whole; idea.list and habit.list need no input', async () => {
+  const p = await plan('x', gemini(intent({ intent: 'idea.create', text: 'A budget app that reads bank texts and sorts them' })), { db: withLists });
+  assert.deepEqual(p.params, ['A budget app that reads bank texts and sorts them', 'A budget app that reads bank texts and sorts them', 'chat']);
+  assert.equal((await plan('x', gemini(intent({ intent: 'idea.create' })), { db: withLists })).action, 'reply');
+  assert.equal((await plan('x', gemini(intent({ intent: 'idea.list' })), { db: withLists })).action, 'sql');
+  assert.equal((await plan('x', gemini(intent({ intent: 'habit.list' })), { db: withLists })).params.length, 0);
+});
+
+test('Reply speaks habit check-ins with the streak', async () => {
+  const data = { query: 'meditate', day: '2026-10-21', today: '2026-10-21', yesterday: false };
+  const habit = { id: 'h1', title: 'Meditate' };
+  const one = await reply(planFor('habit.log', data), [{ match_count: '1', habit, dates: ['2026-10-19', '2026-10-20'], candidates: [habit] }]);
+  assert.equal(one.reply, "Logged Meditate for today. That's a 3 day streak.");
+  const again = await reply(planFor('habit.log', data), [{ match_count: '1', habit, dates: ['2026-10-21'], candidates: [habit] }]);
+  assert.match(again.reply, /already checked in for today/);
+  const first = await reply(planFor('habit.log', data), [{ match_count: '1', habit, dates: [], candidates: [habit] }]);
+  assert.match(first.reply, /day one/);
+  const none = await reply(planFor('habit.log', data), [{ match_count: '0', habit: null, dates: [], candidates: null }]);
+  assert.match(none.reply, /couldn't find a habit/);
+  const list = await reply(planFor('habit.list', { today: '2026-10-21' }), [{ id: 'h1', title: 'Meditate', dates: ['2026-10-20', '2026-10-21'] }, { id: 'h2', title: 'Gym', dates: [] }]);
+  assert.equal(list.reply, 'You track 2 habits. Meditate, 2 day streak, done today. Gym, no streak.');
+});
+
+test('streakInfo counts from yesterday until a day is missed, and finds the best run', async () => {
+  const [r] = await run('Reply', {
+    input: [{ match_count: '1', habit: { id: 'h', title: 'X' }, dates: ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-19', '2026-10-20'], candidates: [] }],
+    nodes: { Plan: [{ plan: planFor('habit.log', { query: 'x', day: '2026-10-20', today: '2026-10-21', yesterday: true }) }] },
+  });
+  assert.match(r.reply, /2 day streak/);
+});

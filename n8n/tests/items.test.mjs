@@ -93,3 +93,53 @@ test('a refused request passes its message straight through', async () => {
   const [out] = await reply(p, [{}]);
   assert.deepEqual([out.ok, out.error], [false, 'bad_action']);
 });
+
+// ---- M7: habits and ideas ----
+test('list also returns habits with their done dates and ideas, in the same statement', async () => {
+  const p = await plan({ action: 'list' });
+  assert.match(p.sql, /as habits/);
+  assert.match(p.sql, /habit_logs/);
+  assert.match(p.sql, /as ideas/);
+  assert.deepEqual(p.params, []);
+});
+
+test('habit_create binds the name, trims it, and refuses an empty one', async () => {
+  const p = await plan({ action: 'habit_create', title: '  Meditate \n', target_per_week: 5 });
+  assert.deepEqual(p.params, ['Meditate', 5]);
+  assert.equal((await plan({ action: 'habit_create', title: 'x', target_per_week: 99 })).params[1], null);
+  assert.equal((await plan({ action: 'habit_create', title: '   ' })).error, 'missing_title');
+});
+
+test('habit_log checks the id and the date (not in the future, not too old)', async () => {
+  const ok = await plan({ action: 'habit_log', id: ID, date: '2026-10-21', done: true });
+  assert.deepEqual(ok.params, [ID, '2026-10-21']);
+  assert.match(ok.sql, /insert into jarvis.habit_logs/);
+  const undo = await plan({ action: 'habit_log', id: ID, date: '2026-10-20', done: false });
+  assert.match(undo.sql, /delete from jarvis.habit_logs/);
+  for (const [body, error] of [[{ id: ID, date: '2026-10-22' }, 'future_date'], [{ id: ID, date: '2024-01-01' }, 'old_date'], [{ id: ID, date: 'tomorrow' }, 'bad_date'], [{ id: 'x', date: '2026-10-21' }, 'bad_id'], [{ id: ID, date: '2026-02-31' }, 'bad_date'], [{ id: ID, date: '2026-13-45' }, 'bad_date']]) {
+    assert.equal((await plan({ action: 'habit_log', ...body })).error, error, JSON.stringify(body));
+  }
+});
+
+test('ideas keep their lines, get a title from the first line, and are length limited', async () => {
+  const p = await plan({ action: 'idea_create', text: '\n  App for notes\r\nsecond line\n\nthird' });
+  assert.equal(p.params[0], 'App for notes');
+  assert.equal(p.params[1], 'App for notes\nsecond line\n\nthird');
+  assert.equal(p.params[2], 'app');
+  assert.equal((await plan({ action: 'idea_create', text: 'a'.repeat(9000), source: 'shortcut' })).params[1].length, 4000);
+  assert.equal((await plan({ action: 'idea_create', text: '  ' })).error, 'missing_text');
+  const upd = await plan({ action: 'idea_update', id: ID, text: 'New text' });
+  assert.deepEqual(upd.params, [ID, 'New text', 'New text']);
+  const del = await plan({ action: 'idea_delete', id: ID });
+  assert.deepEqual(del.params, [ID]);
+  assert.equal((await plan({ action: 'idea_delete', id: "1'; drop" })).error, 'bad_id');
+});
+
+test('habit and idea answers are shaped for the app', async () => {
+  const [r] = await run('Items reply', { input: [{ id: ID, title: 'Meditate', existing: true }], nodes: { 'Items plan': [{ plan: { ok: true, action: 'sql', kind: 'habit_create', now_iso: 'x' } }] } });
+  assert.equal(r.ok, true);
+  assert.equal(r.habit.title, 'Meditate');
+  assert.equal(r.habit.existing, true);
+  const [gone] = await run('Items reply', { input: [{}], nodes: { 'Items plan': [{ plan: { ok: true, action: 'sql', kind: 'idea_delete', now_iso: 'x' } }] } });
+  assert.equal(gone.error, 'not_found');
+});
