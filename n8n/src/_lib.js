@@ -114,3 +114,38 @@ function streakInfo(dates, today) {
   return { current, best, total: days.length, doneToday: set.has(t) };
 }
 
+// ---- exams ----
+// An exam is an important date in the College space plus up to two ordinary reminders linked to it:
+// 7 pm the evening before, and two hours before the start (only when the exam has a clock time).
+// Params: $1 title, $2 space, $3 start, $4 source, $5 alert 1 time, $6 alert 1 text, $7 alert 2 time, $8 alert 2 text.
+const EXAM_CREATE_SQL = `with e as (
+  insert into jarvis.items (type, title, space, due_at, advance_days, source)
+  values ('date', $1, $2, $3::timestamptz, '{}', $4)
+  returning id, type, title, space, due_at, remind_at, recurrence, advance_days
+),
+r1 as (
+  insert into jarvis.items (type, title, space, remind_at, parent_id, source)
+  select 'reminder', $6, e.space, nullif($5, '')::timestamptz, e.id, 'exam' from e where $5 <> '' returning id
+),
+r2 as (
+  insert into jarvis.items (type, title, space, remind_at, parent_id, source)
+  select 'reminder', $8, e.space, nullif($7, '')::timestamptz, e.id, 'exam' from e where $7 <> '' returning id
+)
+select e.id, e.type, e.title, e.space, e.due_at, e.remind_at, e.recurrence, e.advance_days,
+       (select count(*) from r1)::int + (select count(*) from r2)::int as alerts
+from e`;
+
+function examAlerts(title, start, now) {
+  const s = toIst(start);
+  const timed = s.getUTCHours() + s.getUTCMinutes() > 0;
+  const dayBefore = istAt(start, -1, 19, 0);
+  const twoHours = new Date(start.getTime() - 2 * 3600000);
+  const ahead = (d) => d.getTime() > now.getTime() + 60000;
+  return {
+    a1: ahead(dayBefore) ? dayBefore.toISOString() : '',
+    t1: `Exam tomorrow: ${title}${timed ? ', ' + clock12(start) : ''}`,
+    a2: timed && ahead(twoHours) ? twoHours.toISOString() : '',
+    t2: `${title} starts in 2 hours`,
+  };
+}
+

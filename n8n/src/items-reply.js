@@ -27,12 +27,25 @@ if (plan.kind === 'list') {
   const ideas = (Array.isArray(row.ideas) ? row.ideas : []).map((d) => ({
     id: d.id, title: d.title, body: d.body || d.title, created_at: iso(d.created_at), updated_at: iso(d.updated_at),
   }));
+  const links = (Array.isArray(row.links) ? row.links : []).map((k) => ({ id: k.id, title: k.title, url: k.url }));
   const items = row.items.map((r) => ({
     id: r.id, type: r.type, title: r.title, space: r.space, status: r.status,
     due_at: iso(r.due_at), remind_at: iso(r.remind_at), recurrence: r.recurrence || null,
     advance_days: Array.isArray(r.advance_days) ? r.advance_days : [],
   }));
-  return [{ json: { ok: true, now: plan.now_iso, items, habits, ideas, spaces: Array.isArray(row.spaces) ? row.spaces : [] } }];
+  return [{ json: { ok: true, now: plan.now_iso, items, habits, ideas, links, spaces: Array.isArray(row.spaces) ? row.spaces : [] } }];
+}
+
+if (plan.kind === 'link_create' || plan.kind === 'link_delete') {
+  const row = rows[0];
+  if (!row || !row.id) return [{ json: { ok: false, error: 'not_found', reply: 'That link no longer exists.' } }];
+  return [{ json: { ok: true, link: { id: row.id, title: row.title, url: row.url } } }];
+}
+
+if (plan.kind === 'exam_create' || plan.kind === 'work_create') {
+  const row = rows[0];
+  if (!row || !row.id) return [{ json: { ok: false, error: 'db_error', reply: "I couldn't reach my database just now. Please try again in a minute." } }];
+  return [{ json: { ok: true, item: { id: row.id, type: row.type, title: row.title, space: row.space, due_at: iso(row.due_at), remind_at: null, recurrence: null, advance_days: Array.isArray(row.advance_days) ? row.advance_days : [] }, alerts: row.alerts === undefined ? undefined : Number(row.alerts) } }];
 }
 
 if (plan.kind.startsWith('habit_') || plan.kind.startsWith('idea_')) {

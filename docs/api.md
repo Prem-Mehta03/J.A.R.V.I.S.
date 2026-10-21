@@ -24,7 +24,7 @@ Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared
 
 ### `POST jarvis-items` additions (M7)
 
-`list` now also returns `habits` (`id, title, target_per_week, dates` with the days done, last 400) and `ideas` (`id, title, body, created_at, updated_at`). New actions, all fixed SQL with bound values:
+`list` now also returns `habits` (`id, title, target_per_week, dates` with the days done, last 400) and `ideas` (`id, title, body, created_at, updated_at`) and `links` (`id, title, url`). New actions, all fixed SQL with bound values:
 
 | action | body | does |
 |---|---|---|
@@ -34,6 +34,10 @@ Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared
 | `idea_create` | `text` (up to 4000), optional `source` | saves an idea |
 | `idea_update` | `id`, `text` | edits it |
 | `idea_delete` | `id` | deletes it |
+| `exam_create` | `title`, `date` (YYYY-MM-DD, today or later), optional `time` (HH:MM) | adds an important date in the College space plus linked reminders at 7 PM the evening before and 2 hours before (the latter only with a time); reply carries `alerts` |
+| `link_create` | `url`, optional `title` (https is added if missing) | saves a website; returns `link` |
+| `link_delete` | `id` | removes a saved link |
+| `work_create` | `title`, optional `date`, optional `source` | adds a task in the College space, due at the end of that day |
 
 Chat (`jarvis`) also understands `habit.create`, `habit.log`, `habit.list`, `idea.create` and `idea.list`.
 

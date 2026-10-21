@@ -143,3 +143,43 @@ test('habit and idea answers are shaped for the app', async () => {
   const [gone] = await run('Items reply', { input: [{}], nodes: { 'Items plan': [{ plan: { ok: true, action: 'sql', kind: 'idea_delete', now_iso: 'x' } }] } });
   assert.equal(gone.error, 'not_found');
 });
+
+// ---- exams and college work ----
+test('exam_create keeps the clock time, files under college, adds two linked alerts, and refuses past or bad dates', async () => {
+  const p = await plan({ action: 'exam_create', title: 'dsa midsem', date: '2026-11-05', time: '09:30' });
+  assert.deepEqual(p.params.slice(0, 4), ['Dsa midsem', 'college', '2026-11-05T04:00:00.000Z', 'app']);
+  assert.equal(p.params[4], '2026-11-04T13:30:00.000Z'); // 7 pm the evening before, India time
+  assert.equal(p.params[5], 'Exam tomorrow: Dsa midsem, 9:30 AM');
+  assert.equal(p.params[6], '2026-11-05T02:00:00.000Z'); // two hours before
+  assert.equal(p.params[7], 'Dsa midsem starts in 2 hours');
+  assert.match(p.sql, /advance_days/);
+  const noClock = await plan({ action: 'exam_create', title: 'x', date: '2026-11-05' });
+  assert.equal(noClock.params[2], '2026-11-04T18:30:00.000Z');
+  assert.equal(noClock.params[6], ''); // no start time, so no two-hour alert
+  assert.equal(noClock.params[4], '2026-11-04T13:30:00.000Z');
+  assert.equal((await plan({ action: 'exam_create', title: 'x', date: '2026-10-20' })).error, 'past_date');
+  assert.equal((await plan({ action: 'exam_create', title: 'x', date: '2026-02-31' })).error, 'bad_date');
+  assert.equal((await plan({ action: 'exam_create', title: 'x' })).error, 'bad_date');
+  assert.equal((await plan({ action: 'exam_create', title: ' ', date: '2026-11-05' })).error, 'missing_title');
+});
+
+test('link_create adds https, rejects junk, and link_delete needs an id', async () => {
+  const a = await plan({ action: 'link_create', title: 'Library', url: 'library.bits-pilani.ac.in/login' });
+  assert.deepEqual(a.params, ['Library', 'https://library.bits-pilani.ac.in/login']);
+  const b = await plan({ action: 'link_create', url: 'https://www.example.com/a' });
+  assert.deepEqual(b.params, ['example.com', 'https://www.example.com/a']);
+  assert.equal((await plan({ action: 'link_create', url: 'notaurl' })).error, 'bad_url');
+  assert.equal((await plan({ action: 'link_create', url: 'javascript:alert(1)' })).error, 'bad_url');
+  assert.equal((await plan({ action: 'link_create', url: '' })).error, 'missing_url');
+  assert.equal((await plan({ action: 'link_delete', id: 'nope' })).error, 'bad_id');
+  assert.match((await plan({ action: 'link_delete', id: '11111111-1111-4111-8111-111111111111' })).sql, /delete from jarvis.links/);
+});
+
+test('work_create makes a college task, with or without a due date (due at the end of that day)', async () => {
+  const withDate = await plan({ action: 'work_create', title: 'finish lab report', date: '2026-10-25', source: 'shortcut' });
+  assert.deepEqual(withDate.params, ['Finish lab report', '2026-10-25T23:59:00+05:30', 'shortcut']);
+  const none = await plan({ action: 'work_create', title: 'read chapter 4' });
+  assert.deepEqual(none.params, ['Read chapter 4', '', 'app']);
+  assert.match(none.sql, /'college'/);
+  assert.equal((await plan({ action: 'work_create', title: 'x', date: 'friday' })).error, 'bad_date');
+});

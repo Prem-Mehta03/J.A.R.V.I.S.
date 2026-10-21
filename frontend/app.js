@@ -14,13 +14,13 @@ const store = {
 
 const state = {
   view: 'chat', space: 'all', drawer: false, sheet: null, search: '',
-  items: [], habits: [], ideas: [], spaces: [], loadedAt: null, online: true, busy: false, waking: false,
+  items: [], habits: [], ideas: [], links: [], spaces: [], loadedAt: null, online: true, busy: false, waking: false,
   status: '', statusErr: false, chat: [], open: { overdue: true, tomorrow: false },
 };
 try { state.chat = JSON.parse(store.get(LS.chat) || '[]').slice(-40); } catch (e) { state.chat = []; }
 try {
   const c = JSON.parse(store.get(LS.cache) || 'null');
-  if (c) { state.items = c.items || []; state.habits = c.habits || []; state.ideas = c.ideas || []; state.spaces = c.spaces || []; state.loadedAt = new Date(c.at); }
+  if (c) { state.items = c.items || []; state.habits = c.habits || []; state.ideas = c.ideas || []; state.links = c.links || []; state.spaces = c.spaces || []; state.loadedAt = new Date(c.at); }
 } catch (e) { /* ignore */ }
 
 const root = document.getElementById('app');
@@ -90,9 +90,9 @@ const voiceMode = createVoiceMode({
   onExit: () => { setOrbMode('idle'); refresh(); },
 });
 
-const saveCache = () => store.set(LS.cache, JSON.stringify({ items: state.items, habits: state.habits, ideas: state.ideas, spaces: state.spaces, at: (state.loadedAt || new Date()).toISOString() }));
+const saveCache = () => store.set(LS.cache, JSON.stringify({ items: state.items, habits: state.habits, ideas: state.ideas, links: state.links, spaces: state.spaces, at: (state.loadedAt || new Date()).toISOString() }));
 
-const life = createLife({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), saveCache: () => saveCache(), emptyBox: (a, b) => emptyBox(a, b) });
+const life = createLife({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), saveCache: () => saveCache(), emptyBox: (a, b) => emptyBox(a, b), group: (...a) => group(...a), openSheet: (i) => openSheet(i) });
 
 async function refresh() {
   // Only say "waking up" if the server is really slow (a warm server answers in a few seconds).
@@ -100,7 +100,7 @@ async function refresh() {
   const r = await call('jarvis-items', { action: 'list' });
   clearTimeout(wake);
   if (r.ok) {
-    state.items = r.items || []; state.habits = r.habits || []; state.ideas = r.ideas || []; state.spaces = r.spaces || []; state.loadedAt = new Date(); state.online = true;
+    state.items = r.items || []; state.habits = r.habits || []; state.ideas = r.ideas || []; state.links = r.links || []; state.spaces = r.spaces || []; state.loadedAt = new Date(); state.online = true;
     saveCache(); setStatus('');
   } else {
     state.online = false;
@@ -289,7 +289,7 @@ function datesView(now) {
 }
 
 // ---------- render ----------
-const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView };
+const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView, study: life.studyView };
 
 function renderMain() {
   const now = new Date();
@@ -308,7 +308,7 @@ function renderDrawer() {
   ui.drawer.inert = !open; ui.drawer.setAttribute('aria-hidden', String(!open));
   const todayN = (() => { const g = L.groupToday(state.items, now); return g.rail.length + g.overdue.length; })();
   const cnt = (type) => state.items.filter((i) => i.type === type).length;
-  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')], ['dates', 'calendar', 'Dates', L.listDates(state.items, now).length], ['habits', 'flame', 'Habits', state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length], ['ideas', 'bulb', 'Ideas', state.ideas.length]];
+  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')], ['dates', 'calendar', 'Dates', L.listDates(state.items, now).length], ['study', 'book', 'Study', L.listExams(state.items, now).length + L.collegeWork(state.items).length], ['habits', 'flame', 'Habits', state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length], ['ideas', 'bulb', 'Ideas', state.ideas.length]];
   const spaces = [{ slug: 'all', label: 'All spaces' }, ...state.spaces];
   ui.drawer.replaceChildren(
     el('div', { class: 'd-head' },
@@ -431,6 +431,6 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', fit); fit();
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden && voiceMode.active) voiceMode.close(); if (!document.hidden && ui.main && store.get(LS.url) && !state.busy) refresh(); });
-setInterval(() => { if (ui.main && !document.hidden && !state.sheet && !state.drawer && state.view !== 'chat' && state.view !== 'dates') renderMain(); }, 60000);
+setInterval(() => { if (ui.main && !document.hidden && !state.sheet && !state.drawer && ['today', 'tasks', 'reminders'].includes(state.view)) renderMain(); }, 60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 boot();

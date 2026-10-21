@@ -110,7 +110,7 @@ returning id, type, title, space, due_at, remind_at, recurrence, advance_days`;
 
 const LIST_SQL = `select id, type, title, space, due_at, remind_at, recurrence, advance_days
 from jarvis.items
-where status = 'open'
+where status = 'open' and parent_id is null
   and ($1 = 'any' or type = $1)
   and ($2 = '' or space = $2)
   and ($5 = 'all' or (coalesce(remind_at, due_at) >= $3::timestamptz and coalesce(remind_at, due_at) < $4::timestamptz))
@@ -121,7 +121,7 @@ limit 20`;
 // $1 type or 'any', $2 stems as a text array literal, $3 new status, $4 the words as said (an exact title wins).
 const CLOSE_SQL = `with cand as (
   select id, type, title from jarvis.items
-  where status = 'open' and type in ('reminder', 'task', 'date') and ($1 = 'any' or type = $1)
+  where status = 'open' and parent_id is null and type in ('reminder', 'task', 'date') and ($1 = 'any' or type = $1)
     and not exists (select 1 from unnest($2::text[]) s where lower(title) not like '%' || s || '%')
 ),
 matches as (
@@ -132,6 +132,11 @@ updated as (
   update jarvis.items set status = $3
   where id in (select id from matches) and (select count(*) from matches) = 1
   returning id, type, title, space
+),
+kids as (
+  update jarvis.items set status = 'cancelled'
+  where parent_id in (select id from updated) and status = 'open'
+  returning id
 )
 select (select count(*) from matches) as match_count,
        (select json_agg(json_build_object('id', m.id, 'title', m.title, 'type', m.type)) from (select * from matches limit 5) m) as candidates,
@@ -177,7 +182,7 @@ returning slug, label`;
 
 const create = (type, title, whenDate, extra) => {
   const e = extra || {};
-  const space = pickSpace(L.space);
+  const space = e.space && slugs.includes(e.space) && !ctx.space_hint ? e.space : pickSpace(L.space);
   const dueIso = (type === 'task' || type === 'date') && whenDate ? whenDate.toISOString() : '';
   const remindIso = type === 'reminder' ? whenDate.toISOString() : '';
   const advance = type === 'date' ? `{${(e.advance || [7, 1]).join(',')}}` : '{}';
@@ -218,8 +223,10 @@ switch (L.intent) {
     let when = parseWhen(L.when);
     if (!when) return ask(`What is the date for ${lowerFirst(title)}?`, { provider });
     const recurrence = validRrule(L.recurrence);
-    when = startOfIstDay(when);
-    if (when.getTime() < startOfIstDay(now).getTime()) {
+    // An exam or event with a clock time keeps it (the alert text says "at 9:30 AM"); other dates are all-day.
+    const hasClock = toIst(when).getUTCHours() + toIst(when).getUTCMinutes() > 0;
+    if (!hasClock) when = startOfIstDay(when);
+    if (startOfIstDay(when).getTime() < startOfIstDay(now).getTime()) {
       if (recurrence === 'FREQ=YEARLY') {
         // Roll a past birthday or anniversary forward to its next occurrence.
         const d = toIst(when);
@@ -237,8 +244,21 @@ switch (L.intent) {
     let advance = Array.isArray(L.advance_days)
       ? L.advance_days.filter((n) => Number.isInteger(n) && n >= 0 && n <= 365).slice(0, 5)
       : [];
-    if (!advance.length) advance = [7, 1];
-    return create('date', title, when, { recurrence, advance });
+    const isExam = /\b(exam|test|quiz|mid-?sem|compre|viva|assessment)\b/i.test(title);
+    if (!advance.length) advance = isExam ? [1] : [7, 1];
+    if (isExam && !recurrence) {
+      const al = examAlerts(title, when, now);
+      const space = !ctx.space_hint && L.space && slugs.includes(L.space) ? L.space : (ctx.space_hint && slugs.includes(ctx.space_hint) ? ctx.space_hint : 'college');
+      return finish({
+        intent: 'date.create',
+        action: 'sql',
+        sql: EXAM_CREATE_SQL,
+        params: [title, space, when.toISOString(), sourceName, al.a1, al.t1, al.a2, al.t2],
+        provider,
+        data: { type: 'date', title, space, when_iso: when.toISOString(), recurrence: '', advance_days: [], exam: true },
+      });
+    }
+    return create('date', title, when, { recurrence, advance, space: isExam && !L.space ? 'college' : undefined });
   }
 
   case 'item.list': {

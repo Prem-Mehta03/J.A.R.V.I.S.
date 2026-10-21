@@ -22,20 +22,31 @@ const HABITS_SQL = `(select coalesce(json_agg(h), '[]'::json) from (
      where type = 'idea' and status <> 'archived' order by updated_at desc limit 200
    ) d) as ideas,`;
 
-const LIST_SQL = `select
+// Housekeeping in the same statement: exam alerts that have already rung are closed.
+const LIST_SQL = `with tidy as (
+  update jarvis.items set status = 'done' where parent_id is not null and type = 'reminder' and status = 'open' and last_notified_at is not null returning id
+)
+select
+  (select coalesce(json_agg(k), '[]'::json) from (select id, title, url from jarvis.links order by created_at limit 100) k) as links,
   ${HABITS_SQL}
   (select coalesce(json_agg(x), '[]'::json) from (
      select id, type, title, space, status, due_at, remind_at, recurrence, advance_days, created_at
      from jarvis.items
-     where status = 'open' and type in ('reminder', 'task', 'date')
+     where status = 'open' and type in ('reminder', 'task', 'date') and parent_id is null
      order by coalesce(remind_at, due_at) nulls last, created_at
      limit 300
    ) x) as items,
   (select coalesce(json_agg(json_build_object('slug', slug, 'label', label) order by slug), '[]'::json) from jarvis.spaces) as spaces`;
 
-const CLOSE_SQL = `update jarvis.items set status = $2
-where id = $1::uuid and status = 'open' and type in ('reminder', 'task', 'date')
-returning id, type, title, space, status`;
+// Closing an item also cancels any alerts that belong to it (an exam's reminders).
+const CLOSE_SQL = `with c as (
+  update jarvis.items set status = $2
+  where id = $1::uuid and status = 'open' and type in ('reminder', 'task', 'date')
+  returning id, type, title, space, status
+), kids as (
+  update jarvis.items set status = 'cancelled' where parent_id in (select id from c) and status = 'open' returning id
+)
+select id, type, title, space, status from c`;
 
 if (action === 'list') {
   return [{ json: { plan: { ok: true, action: 'sql', kind: 'list', sql: LIST_SQL, params: [], now_iso: isoIst(now) } } }];
@@ -55,6 +66,43 @@ const sql = (kind, text, params) => [{ json: { plan: { ok: true, action: 'sql', 
 const validDate = (str) => { const d = new Date(str + 'T00:00:00Z'); return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === str; };
 const ideaTitle = (text) => (text.split('\n').map((l) => l.trim()).find(Boolean) || '').slice(0, 80);
 
+if (action === 'exam_create' || action === 'work_create') {
+  const exam = action === 'exam_create';
+  const title = clean(body.title, 100).replace(/\s+/g, ' ');
+  if (!title) return fail('missing_title', exam ? 'What is the exam called?' : 'What is the work?');
+  const date = typeof body.date === 'string' ? body.date.trim() : '';
+  const hasDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  if ((exam || date) && !(hasDate && validDate(date))) return fail('bad_date', 'Pick a valid date.');
+  if (exam && date < istDateStr(now)) return fail('past_date', 'That date has already passed.');
+  let due = null;
+  if (hasDate) {
+    const time = typeof body.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(body.time.trim()) ? body.time.trim() : '';
+    due = isoIst(parseWhen(`${date}T${exam ? (time || '00:00') : '23:59'}:00+05:30`));
+  }
+  const upper = (t) => t[0].toUpperCase() + t.slice(1);
+  if (exam) {
+    const start = parseWhen(due);
+    const al = examAlerts(upper(title), start, now);
+    return sql('exam_create', EXAM_CREATE_SQL, [upper(title), 'college', start.toISOString(), 'app', al.a1, al.t1, al.a2, al.t2]);
+  }
+  return sql('work_create', `insert into jarvis.items (type, title, space, due_at, source) values ('task', $1, 'college', nullif($2, '')::timestamptz, $3)
+returning id, type, title, space, due_at, remind_at, recurrence, advance_days`, [upper(title), due || '', ['app', 'shortcut', 'voice'].includes(body.source) ? body.source : 'app']);
+}
+if (action === 'link_create') {
+  let url = clean(body.url, 2000).replace(/\s+/g, '');
+  if (!url) return fail('missing_url', 'Paste the web address.');
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) url = 'https://' + url;
+  // No URL class here: the n8n Code sandbox does not provide it.
+  const m = url.match(/^https?:\/\/([^\/?#:@\s]+)(?::\d{1,5})?(?:[\/?#]\S*)?$/i);
+  const host = m ? m[1].replace(/^www\./i, '') : '';
+  if (!host || !/^[a-z0-9-]+(\.[a-z0-9-]+)*$/i.test(host) || (!host.includes('.') && host.toLowerCase() !== 'localhost')) return fail('bad_url', 'That does not look like a web address.');
+  const title = clean(body.title, 80).replace(/\s+/g, ' ') || host;
+  return sql('link_create', `insert into jarvis.links (title, url) values ($1, $2) returning id, title, url`, [title, url]);
+}
+if (action === 'link_delete') {
+  if (!okId) return fail('bad_id', 'That link has no valid id.');
+  return sql('link_delete', `delete from jarvis.links where id = $1::uuid returning id, title`, [id]);
+}
 if (action === 'habit_create') {
   const title = clean(body.title, 60).replace(/\s+/g, ' ');
   if (!title) return fail('missing_title', 'What should the habit be called?');

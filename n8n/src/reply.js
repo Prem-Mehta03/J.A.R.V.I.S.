@@ -166,9 +166,12 @@ switch (plan.intent) {
     const r = rows[0];
     const rule = rruleSpeak(r.recurrence);
     const advance = (Array.isArray(r.advance_days) ? r.advance_days : []).map(advanceWord).join(' and ');
+    const examNote = r.alerts === undefined ? '' : (Number(r.alerts) >= 2 ? " I'll remind you at 7 PM the evening before and 2 hours before." : Number(r.alerts) === 1 ? " I'll remind you the evening before." : '');
     const spaceNote = r.space !== 'personal' ? ` Filed under ${labelOf(r.space)}.` : '';
+    const dueAt = new Date(r.due_at);
+    const timed = toIst(dueAt).getUTCHours() + toIst(dueAt).getUTCMinutes() > 0;
     return done({
-      reply: `Saved ${r.title} ${speakWhen(new Date(r.due_at), now, true)}${rule ? `, repeating ${rule}` : ''}.${advance ? ` I'll remind you ${advance}.` : ''}${spaceNote}`,
+      reply: `Saved ${r.title} ${speakWhen(dueAt, now, !timed)}${rule ? `, repeating ${rule}` : ''}.${advance ? ` I'll remind you ${advance}.` : ''}${examNote}${spaceNote}`,
       item: publicItem(r),
     });
   }

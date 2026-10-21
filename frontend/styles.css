@@ -282,3 +282,20 @@ textarea { width: 100%; padding: 14px 16px; border-radius: 16px; border: 0; outl
 .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cal { align-content: start; } .habit-sheet, .idea-sheet { align-content: start; }
+
+/* study */
+.examcal { background: var(--low); border-radius: 16px; padding: 12px; display: grid; gap: 8px; margin-bottom: 12px; }
+.examcal .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.examcal .cell { background: none; font-size: 13px; }
+.examcal .cell.exam { background: var(--gold); color: #301400; font-weight: 700; box-shadow: 0 0 10px rgba(255,184,77,.35); }
+.addexam { margin: 12px 0 0; }
+.examform, .workform { display: grid; gap: 10px; margin: 12px 0; }
+.examform input, .workform input { width: 100%; height: 48px; padding: 0 16px; border-radius: 24px; border: 0; outline: 0; background: var(--card); color: var(--ink); font: 16px var(--font); box-sizing: border-box; min-width: 0; }
+.examform label, .workform label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; }
+
+.linkrow { display: flex; align-items: center; gap: 8px; }
+.linkrow .drow { flex: 1; min-width: 0; text-decoration: none; color: inherit; }
+.linkrow .m { overflow-wrap: anywhere; }
+.links-sheet { max-height: 92dvh; overflow-y: auto; align-content: start; }
+.links-sheet .stack { margin: 12px 0; }

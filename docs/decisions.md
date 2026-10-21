@@ -118,3 +118,11 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **"Done X" checks the habit list first only if X fits a habit and no open reminder or task.** Otherwise it closes the reminder or task as before.
 - **Study logging dropped.** It would duplicate tasks, reminders and dates in the College space. A weekly target on habits (`target_per_week`) covers "study 5 days a week"; a Sunday summary goes to M9.
 
+## Study tab (M7)
+
+- **Exam alerts are linked reminders.** An exam is an important date in the College space with `advance_days` empty; its alerts (7 PM the evening before, 2 hours before the start) are ordinary reminders whose `parent_id` is the exam (migration 007), so the existing reminder engine rings them with no new code. Closing the exam cancels them; the list call closes ones that already rang; they are hidden from the lists. Alerts already in the past are not created. College work is a task in the College space. The Study tab is a view over those plus two forms, so everything also shows in Dates and Tasks, syncs to iOS Reminders, and can be closed by chat.
+- **Dates may carry a clock time.** Alert text then says "at 9:30 AM". Dates without a time are all-day, as before. The alert times did not change (9 AM, the day before and the day of).
+- **Chat exams:** a date whose title says exam, test, quiz, midsem, compre or viva defaults to the College space and the two linked alerts (other dates stay 7 days and 1 day). Repeating exams are treated as plain dates.
+- **Important links** live in their own small table (`jarvis.links`: title, url) and one sheet in the Study tab. Addresses are checked with a regular expression (http or https, a host with a dot); the n8n Code sandbox has no `URL` class.
+- **The Siri shortcut uses the chat route with `space: college`**, so spoken due dates ("by Friday") are understood.
+

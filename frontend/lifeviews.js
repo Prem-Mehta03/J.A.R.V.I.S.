@@ -2,7 +2,7 @@
 import * as L from './logic.js';
 import { icon } from './icons.js';
 
-export function createLife({ el, state, call, setStatus, renderAll, renderSheet, saveCache, emptyBox }) {
+export function createLife({ el, state, call, setStatus, renderAll, renderSheet, saveCache, emptyBox, group, openSheet }) {
   const today = () => L.dateStr(new Date());
   const habitById = (id) => state.habits.find((h) => h.id === id);
   const ideaById = (id) => state.ideas.find((i) => i.id === id);
@@ -146,5 +146,120 @@ export function createLife({ el, state, call, setStatus, renderAll, renderSheet,
       box, save, del);
   }
 
-  return { habitsView, ideasView, sheetFor: (s) => (s.kind === 'habit' ? habitSheet(s) : s.kind === 'idea' ? ideaSheet(s) : null) };
+  // ---------- study: exams and college work ----------
+  const study = { month: null, adding: false };
+
+  async function addItem(payload, okText) {
+    const r = await call('jarvis-items', payload);
+    if (!r.ok) { setStatus(r.reply || 'Could not save that.', true); return false; }
+    state.items = [...state.items.filter((i) => i.id !== r.item.id), r.item];
+    setStatus(okText); saveCache(); renderAll();
+    return true;
+  }
+
+  // ---------- study: important links ----------
+  async function saveLink(title, url) {
+    const r = await call('jarvis-items', { action: 'link_create', title, url });
+    if (!r.ok) { setStatus(r.reply || 'Could not save that link.', true); return false; }
+    state.links = [...state.links, r.link]; setStatus('Link saved.'); saveCache(); renderAll(); renderSheet();
+    return true;
+  }
+  async function deleteLink(k) {
+    const r = await call('jarvis-items', { action: 'link_delete', id: k.id });
+    if (!r.ok) { setStatus(r.reply || 'Could not delete that link.', true); return; }
+    state.links = state.links.filter((x) => x.id !== k.id); setStatus('Link deleted.'); saveCache(); renderAll(); renderSheet();
+  }
+  function linksSheet() {
+    const name = el('input', { type: 'text', placeholder: 'Name (optional)', 'aria-label': 'Link name', maxlength: '80', autocomplete: 'off' });
+    const url = el('input', { type: 'text', inputmode: 'url', placeholder: 'Paste the web address', 'aria-label': 'Web address', maxlength: '2000', autocomplete: 'off', autocapitalize: 'off', required: true });
+    const save = el('button', { class: 'addbtn', type: 'submit' }, icon('plus', 18), 'Save link');
+    const rows = state.links.map((k) => {
+      let armed = false;
+      const del = el('button', { class: 'icon-btn', type: 'button', 'aria-label': `Delete ${k.title}`, onclick: () => {
+        if (!armed) { armed = true; del.replaceChildren(el('small', {}, 'Tap again')); setTimeout(() => { if (del.isConnected) { armed = false; del.replaceChildren(icon('trash', 20)); } }, 4000); } else deleteLink(k);
+      } }, icon('trash', 20));
+      return el('li', { class: 'linkrow' },
+        el('a', { class: 'drow', href: k.url, target: '_blank', rel: 'noopener noreferrer' }, icon('link', 20), el('span', { class: 'body' }, el('span', { class: 't' }, k.title), el('div', { class: 'm' }, k.url.replace(/^https?:\/\//, '')))),
+        del);
+    });
+    return el('div', { class: 'sheet links-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Important links' },
+      el('div', { class: 'grab' }),
+      el('div', { class: 'sh-top' }, el('div', {}, el('div', { class: 'kick' }, 'Study'), el('h2', {}, 'Important links')),
+        el('button', { class: 'sh-x', type: 'button', 'aria-label': 'Close', onclick: closeSheet }, icon('close', 18))),
+      rows.length ? el('ul', { class: 'stack' }, rows) : emptyBox('No links yet', 'Save the websites you open for homework.'),
+      el('form', { class: 'examform', onsubmit: async (e) => { e.preventDefault(); save.disabled = true; if (await saveLink(name.value, url.value)) { name.value = ''; url.value = ''; } save.disabled = false; } }, name, url, save));
+  }
+
+  function studyView(now) {
+    const t = L.dateStr(now);
+    if (!study.month) study.month = { y: Number(t.slice(0, 4)), m: Number(t.slice(5, 7)) - 1 };
+    const exams = L.listExams(state.items, now);
+    const byDay = new Map();
+    for (const e of exams) byDay.set(e.date, [...(byDay.get(e.date) || []), e]);
+    const next = exams[0];
+    const out = [el('h1', { class: 'h1' }, 'Study'),
+      el('p', { class: 'sub' }, next ? `Next exam: ${next.item.title} ${next.days === 0 ? 'today' : next.days === 1 ? 'tomorrow' : `in ${next.days} days`}` : 'No exams added')];
+
+    out.push(el('button', { class: 'act neutral addexam', type: 'button', onclick: () => { state.sheet = { kind: 'links' }; renderSheet(); } }, icon('link', 18), `Important links${state.links.length ? ` (${state.links.length})` : ''}`));
+
+    // exams
+    out.push(el('h2', { class: 'sec' }, 'Exams'));
+    const grid = L.monthGrid(study.month.y, study.month.m);
+    const go = (d) => { study.month = L.shiftMonth(study.month, d); renderAll(); };
+    out.push(el('div', { class: 'examcal' },
+      el('div', { class: 'cal-head' },
+        el('button', { class: 'icon-btn', 'aria-label': 'Previous month', onclick: () => go(-1) }, icon('left', 20)),
+        el('b', {}, grid.label),
+        el('button', { class: 'icon-btn', 'aria-label': 'Next month', onclick: () => go(1) }, icon('right', 20))),
+      el('div', { class: 'cal', role: 'grid' },
+        ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => el('span', { class: 'dow' }, d)),
+        grid.cells.map((c) => {
+          if (!c) return el('span', { class: 'cell blank' });
+          const here = byDay.get(c.date);
+          const cls = 'cell' + (here ? ' exam' : '') + (c.date === t ? ' now' : '');
+          return here
+            ? el('button', { class: cls, 'aria-label': `${c.date}: ${here.map((e) => e.item.title).join(', ')}`, onclick: () => openSheet(here[0].item) }, String(c.day))
+            : el('span', { class: cls }, String(c.day));
+        }))));
+
+    const list = el('ul', { class: 'stack' }, exams.map(({ item, days }) => el('li', {}, el('button', { class: 'drow', onclick: () => openSheet(item) },
+      el('span', { class: 'badge' + (days <= 7 ? ' soon' : days > 30 ? ' far' : '') }, el('b', {}, days === 0 ? 'Today' : String(days)), days === 0 ? null : el('small', {}, days === 1 ? 'day' : 'days')),
+      el('span', { class: 'body' }, el('span', { class: 't' }, item.title),
+        el('div', { class: 'm' }, L.fmtShortDate(L.itemTime(item), now) + (L.hasClock(L.itemTime(item)) ? ', ' + L.fmtTime(L.itemTime(item)) : ''))),
+      icon('right', 20)))));
+    if (!exams.length) list.append(el('li', {}, emptyBox('No exams yet', 'Add one below. Jarvis reminds you at 7 PM the evening before and 2 hours before.')));
+    out.push(list);
+
+    if (study.adding) {
+      const name = el('input', { type: 'text', placeholder: 'Exam, for example DSA midsem', 'aria-label': 'Exam name', maxlength: '100', autocomplete: 'off' });
+      const date = el('input', { type: 'date', 'aria-label': 'Exam date', min: t, required: true });
+      const time = el('input', { type: 'time', 'aria-label': 'Exam time' });
+      const save = el('button', { class: 'addbtn', type: 'submit' }, icon('check', 18), 'Save exam');
+      out.push(el('form', { class: 'examform', onsubmit: async (e) => {
+        e.preventDefault(); save.disabled = true;
+        if (await addItem({ action: 'exam_create', title: name.value, date: date.value, time: time.value }, 'Exam added. I will remind you the evening before and 2 hours before.')) study.adding = false;
+        renderAll();
+      } }, name, el('div', { class: 'two' }, el('label', {}, 'Date', date), el('label', {}, 'Time (optional)', time)),
+      el('div', { class: 'two' }, el('button', { class: 'act neutral', type: 'button', onclick: () => { study.adding = false; renderAll(); } }, 'Cancel'), save)));
+    } else {
+      out.push(el('button', { class: 'act neutral addexam', type: 'button', onclick: () => { study.adding = true; renderAll(); } }, icon('plus', 18), 'Add exam'));
+    }
+
+    // college work
+    const work = L.groupTasks(L.collegeWork(state.items), now);
+    const n = work.overdue.length + work.today.length + work.upcoming.length + work.none.length;
+    out.push(el('h2', { class: 'sec' }, 'College work'));
+    const wname = el('input', { type: 'text', placeholder: 'Add homework or college work', 'aria-label': 'College work', maxlength: '100', autocomplete: 'off', enterkeyhint: 'done' });
+    const wdate = el('input', { type: 'date', 'aria-label': 'Due date (optional)', min: t });
+    out.push(el('form', { class: 'workform', onsubmit: async (e) => {
+      e.preventDefault();
+      if (!wname.value.trim()) return;
+      if (await addItem({ action: 'work_create', title: wname.value, date: wdate.value }, 'Added to college work.')) { wname.value = ''; wdate.value = ''; }
+    } }, wname, el('div', { class: 'two' }, el('label', {}, 'Due (optional)', wdate), el('button', { class: 'addbtn', type: 'submit' }, icon('plus', 18), 'Add'))));
+    out.push(...group('Overdue', work.overdue, now, 'late'), ...group('Today', work.today, now), ...group('Upcoming', work.upcoming, now), ...group('No date', work.none, now));
+    if (!n) out.push(emptyBox('No college work', 'Add homework above, or say "Hey Siri, Jarvis study".'));
+    return out;
+  }
+
+  return { habitsView, ideasView, studyView, sheetFor: (s) => (s.kind === 'links' ? linksSheet() : s.kind === 'habit' ? habitSheet(s) : s.kind === 'idea' ? ideaSheet(s) : null) };
 }

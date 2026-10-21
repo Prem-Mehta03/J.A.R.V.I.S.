@@ -167,10 +167,10 @@ test('date.create rolls a past yearly date forward and defaults the advance aler
   assert.equal(p.params[3], '2027-03-13T18:30:00.000Z'); // 14 March 2027, 00:00 India
   assert.equal(p.params[6], '{7,1}');
   assert.equal(p.params[5], 'FREQ=YEARLY');
-  const upcoming = await plan('x', gemini(intent({ intent: 'date.create', title: 'Exam', when: '2026-11-20', advance_days: [14, 3, 'x', -2, 500] })));
+  const upcoming = await plan('x', gemini(intent({ intent: 'date.create', title: 'Dentist', when: '2026-11-20', advance_days: [14, 3, 'x', -2, 500] })));
   assert.equal(upcoming.params[3], '2026-11-19T18:30:00.000Z');
   assert.equal(upcoming.params[6], '{14,3}');
-  const past = await plan('x', gemini(intent({ intent: 'date.create', title: 'Exam', when: '2026-09-01' })));
+  const past = await plan('x', gemini(intent({ intent: 'date.create', title: 'Dentist', when: '2026-09-01' })));
   assert.match(past.say, /already passed/);
 });
 
@@ -437,4 +437,16 @@ test('streakInfo counts from yesterday until a day is missed, and finds the best
     nodes: { Plan: [{ plan: planFor('habit.log', { query: 'x', day: '2026-10-20', today: '2026-10-21', yesterday: true }) }] },
   });
   assert.match(r.reply, /2 day streak/);
+});
+
+test('an exam in chat keeps its clock time, is filed under college, and gets two linked alerts', async () => {
+  const p = await plan('x', gemini(intent({ intent: 'date.create', title: 'DSA midsem exam', when: '2026-11-05T09:30:00+05:30' })), { db: { spaces: [{ slug: 'personal', label: 'Personal' }, { slug: 'college', label: 'College' }], home_location: null } });
+  assert.equal(p.params[1], 'college');
+  assert.equal(p.params[2], '2026-11-05T04:00:00.000Z');
+  assert.equal(p.params[4], '2026-11-04T13:30:00.000Z');
+  assert.equal(p.params[6], '2026-11-05T02:00:00.000Z');
+  assert.match(p.sql, /parent_id/);
+  const plain = await plan('x', gemini(intent({ intent: 'date.create', title: 'Mother birthday', when: '2026-11-05T00:00:00+05:30', recurrence: 'FREQ=YEARLY' })));
+  assert.equal(plain.params[2], 'personal');
+  assert.equal(plain.params[6], '{7,1}');
 });
