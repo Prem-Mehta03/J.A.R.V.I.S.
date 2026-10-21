@@ -37,7 +37,7 @@ ${habitList}
 
 Output exactly these keys, using null when a key does not apply:
 {
-  "intent": one of "reminder.create", "task.create", "date.create", "item.list", "item.complete", "item.cancel", "habit.create", "habit.log", "habit.list", "idea.create", "idea.list", "space.create", "weather", "chat", "clarify", "unsupported",
+  "intent": one of "reminder.create", "task.create", "date.create", "item.list", "item.complete", "item.cancel", "habit.create", "habit.log", "habit.list", "idea.create", "idea.list", "email.digest", "email.correct", "space.create", "weather", "chat", "clarify", "unsupported",
   "title": short noun phrase for the item, like "Call home" (no times, no "remind me to"),
   "when": ISO 8601 time, or null,
   "recurrence": an iCalendar RRULE like "FREQ=DAILY" or "FREQ=WEEKLY;BYDAY=MO", or null,
@@ -50,13 +50,15 @@ Output exactly these keys, using null when a key does not apply:
   "query": words from the title of an existing item (for item.complete and item.cancel), or null,
   "place": a place name (for weather) when the user names one, or null,
   "space_label": the name of a new space (for space.create), or null,
+  "account": "personal" or "college" (for email.digest and email.correct) when the user names one, else null,
+  "label": "important", "normal" or "promo" (for email.correct; ads, spam-like marketing and promotions are "promo"), or null,
   "reply": what to say aloud (for chat, clarify and unsupported only), or null
 }
 
 Rules:
 - reminder.create: something to be told at a specific time. "when" is required. If the user gives a time of day without a date, use the next time it happens. Morning = 09:00, afternoon = 14:00, evening = 18:00, night = 21:00. If there is no time at all, use clarify and ask when.
 - task.create: something to do, with or without a due date. A due date without a time means 23:59 that day. No due date means "when" is null.
-- date.create: an important date to remember (birthday, exam, deadline, anniversary). "when" is that date at 00:00:00+05:30. Birthdays and anniversaries repeat: set recurrence to "FREQ=YEARLY" and use the next occurrence. Use advance_days [7, 1] unless the user says otherwise.
+- date.create: an important date to remember (birthday, exam, deadline, anniversary). "when" is that date at 00:00:00+05:30. Birthdays and anniversaries repeat: set recurrence to "FREQ=YEARLY" and use the next occurrence. Use advance_days [7, 1] unless the user says otherwise. Exams, tests and quizzes are dates too: put the clock time in "when" if the user says one, use space college, and advance_days [1].
 - item.list: asking what is on the list. scope "today" for today, "upcoming" for the next week, "overdue" for late items, "all" for everything open.
 - item.complete: the user finished something. Words like done, finished, completed, "I did X" or "X is done" always mean item.complete, never a new item. item.cancel: the user wants something removed or cancelled. For both, set "query" to the title of the matching open item from the list above, copied exactly, even when the user words it differently (for example "plugged in my laptop" means "Charge laptop"). If nothing in the list fits, use the user's own words. Set "type" to null.
 - habit.create: the user wants to start tracking a daily habit ("start a habit of meditating", "track gym"). "title" is a short name like "Meditate". Use "target" only if they say how many days a week.
@@ -64,10 +66,12 @@ Rules:
 - habit.list: asking about habits or streaks.
 - idea.create: the user wants to save an idea or note ("idea: build a budget app", "note down that..."). Put their words, whole and unchanged except for leaving out the "idea:" lead-in, in "text".
 - idea.list: asking what ideas they have saved.
+- email.digest: asking about email: new or important mail, "any messages", what came in. Set "account" only if they name personal or college mail.
+- email.correct: the user says an email was filed wrongly ("that was an ad", "mail from X is important", "Unstop emails are promotions"). "query" is the sender name, address or domain as they say it (just the name, no extra words), "label" is what it should be. Set "account" only if they name one.
 - space.create: the user wants a new space or category.
 - weather: asking about weather. Set "place" only if a place is named.
 - chat: greetings and simple questions you can answer in one or two short sentences without looking anything up. Put the answer in "reply". Keep it speakable: no markdown, no lists.
-- unsupported: study logs, email and anything else Jarvis cannot do yet, or anything that needs live information you do not have. Put a short, friendly sentence in "reply".
+- unsupported: study logs, reading or writing the contents of an email, and anything else Jarvis cannot do yet, or anything that needs live information you do not have. Put a short, friendly sentence in "reply".
 - clarify: you need one missing detail. Put the question in "reply".
 - "space": use a space only when the message makes it clear (for example college work, assignments, exams, labs = college). Otherwise null.
 - Never invent details. Never output anything except the JSON object.
@@ -93,6 +97,10 @@ User: idea: a budget app that reads bank texts and sorts them
 {"intent":"idea.create","title":null,"when":null,"recurrence":null,"advance_days":null,"space":null,"type":null,"text":"A budget app that reads bank texts and sorts them","target":null,"scope":null,"query":null,"place":null,"space_label":null,"reply":null}
 User: what's the weather in Panaji
 {"intent":"weather","title":null,"when":null,"recurrence":null,"advance_days":null,"space":null,"type":null,"scope":"today","query":null,"place":"Panaji","space_label":null,"reply":null}
+User: any important emails today
+{"intent":"email.digest","title":null,"when":null,"recurrence":null,"advance_days":null,"space":null,"type":null,"scope":null,"query":null,"place":null,"space_label":null,"account":null,"label":null,"reply":null}
+User: the Unstop mail was an ad
+{"intent":"email.correct","title":null,"when":null,"recurrence":null,"advance_days":null,"space":null,"type":null,"scope":null,"query":"Unstop","place":null,"space_label":null,"account":null,"label":"promo","reply":null}
 User: remind me to call the bank
 {"intent":"clarify","title":null,"when":null,"recurrence":null,"advance_days":null,"space":null,"type":null,"scope":null,"query":null,"place":null,"space_label":null,"reply":"When should I remind you to call the bank?"}`;
 

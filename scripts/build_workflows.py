@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json 04-voice.json, 05-speak.json and 06-sync.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json 04-voice.json, 05-speak.json, 06-sync.json and 07-email.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -23,6 +23,7 @@ OUT3 = ROOT / "n8n" / "workflows" / "03-items-api.json"
 OUT4 = ROOT / "n8n" / "workflows" / "04-voice.json"
 OUT5 = ROOT / "n8n" / "workflows" / "05-speak.json"
 OUT6 = ROOT / "n8n" / "workflows" / "06-sync.json"
+OUT7 = ROOT / "n8n" / "workflows" / "07-email.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -550,6 +551,122 @@ sync = {
 }
 
 
+# ---------- 07 Email: fetch both Gmail accounts every 15 minutes (or on demand), sort the mail, store sender/subject/snippet ----------
+EMAIL_STATE_SQL = """select
+  (select coalesce(json_agg(r), '[]'::json) from (select account, match_type, match_value, label from jarvis.email_rules order by created_at limit 500) r) as rules,
+  (select coalesce(json_agg(f), '[]'::json) from (select sender, left(subject, 80) as subject, user_label from jarvis.email_feedback order by created_at desc limit 15) f) as corrections,
+  (select coalesce(json_agg(m.account || ':' || m.gmail_id), '[]'::json) from jarvis.email_messages m where m.received_at > now() - interval '14 days') as known"""
+
+EMAIL_SAVE_SQL = """with ins as (
+  insert into jarvis.email_messages (account, gmail_id, thread_id, sender_name, sender_email, subject, snippet, received_at, label, label_source)
+  select x.account, x.gmail_id, nullif(x.thread_id, ''), x.sender_name, x.sender_email, x.subject, x.snippet, x.received_at, x.label, x.label_source
+  from json_to_recordset($1::json) as x(account text, gmail_id text, thread_id text, sender_name text, sender_email text, subject text, snippet text, received_at timestamptz, label text, label_source text)
+  on conflict (account, gmail_id) do nothing
+  returning label
+), prune as (
+  delete from jarvis.email_messages where received_at < now() - interval '30 days' returning 1
+), stamp as (
+  insert into jarvis.settings (key, value) values ('email_synced_at', to_jsonb(now()::text))
+  on conflict (key) do update set value = excluded.value returning 1
+)
+select (select count(*) from ins)::int as added, (select count(*) from ins where label = 'important')::int as important,
+       (select count(*) from prune)::int as pruned, (select count(*) from stamp)::int as stamped"""
+
+
+def gmail_fetch(name, position, credential):
+    return node(name, "n8n-nodes-base.gmail", 2.1, position, {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": False,
+        "limit": 40,
+        "simple": False,
+        "filters": {"q": "in:inbox newer_than:3d"},
+    }, credentials={"gmailOAuth2": {"id": "", "name": credential}}, alwaysOutputData=True, executeOnce=True, onError="continueRegularOutput")
+
+
+email_nodes = [
+    node("Every 15 minutes", "n8n-nodes-base.scheduleTrigger", 1.2, [0, 200], {
+        "rule": {"interval": [{"field": "minutes", "minutesInterval": 15}]},
+    }),
+
+    node("Webhook", "n8n-nodes-base.webhook", 2.2, [0, 400], {
+        "httpMethod": "POST",
+        "path": "jarvis-email-refresh",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {"allowedOrigins": "*"},
+    }, webhookId=uid("webhook path jarvis-email-refresh"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
+
+    node("Load state", "n8n-nodes-base.postgres", 2.7, [240, 300], {
+        "operation": "executeQuery", "query": EMAIL_STATE_SQL, "options": {},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, alwaysOutputData=True, executeOnce=True, onError="continueRegularOutput"),
+
+    gmail_fetch("Fetch personal", [460, 300], "Gmail personal"),
+    gmail_fetch("Fetch college", [680, 300], "Gmail college"),
+
+    node("Collect", "n8n-nodes-base.code", 2, [900, 300], {"jsCode": code("email-collect.js")}),
+
+    if_node("Needs sorting?", [1120, 300], "={{ $json.has_llm }}"),
+
+    node("Gemini", "n8n-nodes-base.httpRequest", 4.5, [1340, 200], {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.gemini_body) }}",
+        "options": {"timeout": 25000},
+    }, credentials={"httpHeaderAuth": {"id": "", "name": "Gemini key"}}, onError="continueRegularOutput"),
+
+    if_node("Gemini answered?", [1560, 200], GEMINI_OK),
+
+    node("Groq", "n8n-nodes-base.httpRequest", 4.5, [1780, 300], {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Collect').first().json.groq_body) }}",
+        "options": {"timeout": 30000},
+    }, credentials={"httpHeaderAuth": {"id": "", "name": "Groq key"}}, onError="continueRegularOutput"),
+
+    node("Merge labels", "n8n-nodes-base.code", 2, [2000, 400], {"jsCode": code("email-merge.js")}),
+
+    node("Save", "n8n-nodes-base.postgres", 2.7, [2220, 400], {
+        "operation": "executeQuery",
+        "query": EMAIL_SAVE_SQL,
+        "options": {"queryReplacement": "={{ [$json.rows_json] }}"},
+    }, credentials={"postgres": {"id": "", "name": "Supabase Postgres"}}, alwaysOutputData=True, onError="continueRegularOutput"),
+
+    node("Summary", "n8n-nodes-base.code", 2, [2440, 400], {"jsCode": code("email-summary.js")}),
+]
+
+email_connections = {
+    "Every 15 minutes": link(["Load state"]),
+    "Webhook": link(["Load state"]),
+    "Load state": link(["Fetch personal"]),
+    "Fetch personal": link(["Fetch college"]),
+    "Fetch college": link(["Collect"]),
+    "Collect": link(["Needs sorting?"]),
+    "Needs sorting?": link(["Gemini"], ["Merge labels"]),
+    "Gemini": link(["Gemini answered?"]),
+    "Gemini answered?": link(["Merge labels"], ["Groq"]),
+    "Groq": link(["Merge labels"]),
+    "Merge labels": link(["Save"]),
+    "Save": link(["Summary"]),
+}
+
+email = {
+    "name": "07 Email",
+    "nodes": email_nodes,
+    "connections": email_connections,
+    "active": False,
+    "settings": {"executionOrder": "v1"},
+}
+
+
 def write(path, wf):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -564,3 +681,4 @@ if __name__ == "__main__":
     write(OUT4, voice)
     write(OUT5, speak)
     write(OUT6, sync)
+    write(OUT7, email)

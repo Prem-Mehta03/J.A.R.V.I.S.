@@ -183,3 +183,28 @@ test('work_create makes a college task, with or without a due date (due at the e
   assert.match(none.sql, /'college'/);
   assert.equal((await plan({ action: 'work_create', title: 'x', date: 'friday' })).error, 'bad_date');
 });
+
+test('email actions: list takes no input, label needs an id and a known label, rule delete needs an id', async () => {
+  const list = await plan({ action: 'email_list' });
+  assert.deepEqual(list.params, []);
+  assert.match(list.sql, /email_messages/);
+  const ok = await plan({ action: 'email_label', id: ID, label: 'Promo' });
+  assert.deepEqual(ok.params, [ID, 'promo']);
+  assert.match(ok.sql, /email_rules/);
+  assert.match(ok.sql, /email_feedback/);
+  assert.equal((await plan({ action: 'email_label', id: 'x', label: 'promo' })).error, 'bad_id');
+  assert.equal((await plan({ action: 'email_label', id: ID, label: 'spam' })).error, 'bad_label');
+  assert.equal((await plan({ action: 'email_rule_delete', id: '1' })).error, 'bad_id');
+  assert.deepEqual((await plan({ action: 'email_rule_delete', id: ID })).params, [ID]);
+});
+
+test('email list reply shapes messages and rules for the app; a vanished message is a clear error', async () => {
+  const plan0 = { ok: true, action: 'sql', kind: 'email_list', now_iso: '2026-10-21T10:30:00+05:30' };
+  const [r] = await run('Items reply', { input: [{ emails: [{ id: 'm1', account: 'personal', sender_name: '', sender_email: 'a@b.com', subject: 'Hi', snippet: 's', received_at: '2026-10-21T04:00:00Z', label: 'promo', label_source: 'rule' }], rules: [{ id: 'r1', account: 'personal', sender: 'a@b.com', label: 'promo' }], synced_at: '2026-10-21T04:05:00Z' }], nodes: { 'Items plan': [{ plan: plan0 }] } });
+  assert.equal(r.emails[0].from, 'a@b.com');
+  assert.equal(r.emails[0].by, 'rule');
+  assert.equal(r.rules[0].label, 'promo');
+  assert.equal(r.synced_at, '2026-10-21T09:35:00+05:30');
+  const [gone] = await run('Items reply', { input: [{ changed: 0, sender: null, account: null }], nodes: { 'Items plan': [{ plan: { ...plan0, kind: 'email_label' } }] } });
+  assert.equal(gone.ok, false);
+});

@@ -8,7 +8,7 @@ if (plan.action === 'reply') {
 }
 
 const rows = $input.all().map((i) => i.json).filter((r) => r && Object.keys(r).length > 0);
-const dbError = rows.length > 0 && rows[0].error !== undefined && rows[0].id === undefined && rows[0].items === undefined;
+const dbError = rows.length > 0 && rows[0].error !== undefined && rows[0].id === undefined && rows[0].items === undefined && rows[0].emails === undefined && rows[0].changed === undefined;
 if (dbError) {
   return [{ json: { ok: false, error: 'db_error', reply: "I couldn't reach my database just now. Please try again in a minute." } }];
 }
@@ -34,6 +34,29 @@ if (plan.kind === 'list') {
     advance_days: Array.isArray(r.advance_days) ? r.advance_days : [],
   }));
   return [{ json: { ok: true, now: plan.now_iso, items, habits, ideas, links, spaces: Array.isArray(row.spaces) ? row.spaces : [] } }];
+}
+
+if (plan.kind === 'email_list') {
+  const row = rows[0];
+  if (!row || !Array.isArray(row.emails)) return [{ json: { ok: false, error: 'db_error', reply: "I couldn't reach my database just now. Please try again in a minute." } }];
+  const emails = row.emails.map((m) => ({
+    id: m.id, account: m.account, from: m.sender_name || m.sender_email, sender: m.sender_email, subject: m.subject, snippet: m.snippet,
+    received_at: iso(m.received_at), label: m.label, by: m.label_source,
+  }));
+  const rules = (Array.isArray(row.rules) ? row.rules : []).map((r) => ({ id: r.id, account: r.account, sender: r.sender, label: r.label }));
+  return [{ json: { ok: true, emails, rules, synced_at: iso(row.synced_at) } }];
+}
+
+if (plan.kind === 'email_label') {
+  const row = rows[0];
+  if (!row || !Number(row.changed)) return [{ json: { ok: false, error: 'not_found', reply: 'That email is no longer stored.' } }];
+  return [{ json: { ok: true, changed: Number(row.changed), sender: row.sender, account: row.account } }];
+}
+
+if (plan.kind === 'email_rule_delete') {
+  const row = rows[0];
+  if (!row || !row.id) return [{ json: { ok: false, error: 'not_found', reply: 'That rule no longer exists.' } }];
+  return [{ json: { ok: true, id: row.id } }];
 }
 
 if (plan.kind === 'link_create' || plan.kind === 'link_delete') {

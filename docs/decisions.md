@@ -126,3 +126,14 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Important links** live in their own small table (`jarvis.links`: title, url) and one sheet in the Study tab. Addresses are checked with a regular expression (http or https, a host with a dot); the n8n Code sandbox has no `URL` class.
 - **The Siri shortcut uses the chat route with `space: college`**, so spoken due dates ("by Friday") are understood.
 
+
+## Email (M8)
+
+- **Digest only, no email pushes** (your choice). Important mail is shown in the Email tab, read out on request, and goes into the M9 morning brief.
+- **Existing tables reused.** `email_rules` (match_type sender or domain, match_value) and `email_feedback` come from 001_init.sql; only `email_messages` is new (migration 008). A first draft of 008 recreated the other two with different columns and would have been silently skipped on the real database; caught by running against the real schema.
+- **Order of sorting:** your rules, then Gmail's Promotions tab, then the model. Corrections create a sender rule, relabel that sender's mail of the last 30 days, and are shown to the model as examples (last 15).
+- **What leaves the workflow:** only sender, subject and 120 characters of snippet go to Gemini or Groq; the stored row has sender, subject and a 160 character snippet. The Gmail node returns the raw message, and the Collect node drops everything else immediately. Email text is treated as untrusted in the prompt, and the output is limited to three labels by code.
+- **Unlabelled mail is not stored**, so a failed model call is simply retried at the next check. Mail older than 30 days is deleted from `email_messages`.
+- **One workflow, two triggers:** a 15 minute schedule and the `jarvis-email-refresh` webhook (the app's Refresh button) share the same nodes.
+- **Chat corrections** only change anything when the words point at one sender; otherwise Jarvis asks. A whole free-mail domain cannot be made a rule.
+- **M9 change:** no Sunday summary; instead a college work summary of all open tasks in the Study tab.

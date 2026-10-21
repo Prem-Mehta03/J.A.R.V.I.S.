@@ -122,3 +122,17 @@ In one database statement it marks the `done` ids as done (open reminders and ta
 
 - **CORS (done in M4).** See the `jarvis-items` section.
 - **Abuse.** The token is the only protection on a public address. If it ever looks abused, rotate it.
+
+## Email (M8)
+
+`jarvis-items` actions (fixed SQL, bound values):
+
+| action | input | does |
+|---|---|---|
+| `email_list` | none | returns `emails` (last 14 days: `id, account, from, sender, subject, snippet, received_at, label, by`), `rules` (`id, account, sender, label`; a domain shows as `@domain`) and `synced_at` |
+| `email_label` | `id`, `label` (important, normal, promo) | relabels that sender's recent mail, stores a sender rule and a feedback row |
+| `email_rule_delete` | `id` | removes a rule (mail already filed stays) |
+
+`POST /webhook/jarvis-email-refresh` (same token header) checks both Gmail accounts now and answers `{ok, reply, added, important, errors}`. It can take up to a minute.
+
+Chat intents: `email.digest` (optional `account`) and `email.correct` (`query`, `label`, optional `account`).

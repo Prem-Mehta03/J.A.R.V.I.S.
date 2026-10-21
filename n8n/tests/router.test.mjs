@@ -450,3 +450,46 @@ test('an exam in chat keeps its clock time, is filed under college, and gets two
   assert.equal(plain.params[2], 'personal');
   assert.equal(plain.params[6], '{7,1}');
 });
+
+// ---------------------------------------------------------------- email
+test('email.digest binds the account, and the prompt knows the email intents', async () => {
+  const p = await plan('x', gemini(intent({ intent: 'email.digest', account: 'college' })));
+  assert.deepEqual(p.params, ['college']);
+  assert.match(p.sql, /email_messages/);
+  assert.deepEqual((await plan('x', gemini(intent({ intent: 'email.digest', account: 'work' })))).params, ['']);
+  const [prepared] = await run('Prepare', { input: [{ body: { text: 'any mail' } }] });
+  const [built] = await run('Build request', { input: [{ spaces: SPACES }], nodes: { Prepare: [prepared] } });
+  assert.match(built.gemini_body.systemInstruction.parts[0].text, /email\.correct/);
+});
+
+test('email.correct: words become stems, an address or domain becomes a rule, free mail domains are refused, a bad label asks', async () => {
+  const find = await plan('x', gemini(intent({ intent: 'email.correct', query: 'Unstop', label: 'ads' })));
+  assert.deepEqual(find.params, ['{unstop}', 'promo', '']);
+  assert.equal(find.data.mode, 'find');
+  const domain = await plan('x', gemini(intent({ intent: 'email.correct', query: 'unstop.com', label: 'promo', account: 'personal' })));
+  assert.deepEqual(domain.params, ['@unstop.com', 'promo', 'personal']);
+  assert.equal(domain.data.mode, 'rule');
+  const addr = await plan('x', gemini(intent({ intent: 'email.correct', query: 'Rao@Goa.bits-pilani.ac.in', label: 'important' })));
+  assert.deepEqual(addr.params, ['rao@goa.bits-pilani.ac.in', 'important', '']);
+  const free = await plan('x', gemini(intent({ intent: 'email.correct', query: 'gmail.com', label: 'promo' })));
+  assert.equal(free.action, 'reply');
+  assert.match(free.say, /won't file every gmail.com/);
+  assert.match((await plan('x', gemini(intent({ intent: 'email.correct', query: 'Unstop', label: 'maybe' })))).say, /important, normal, or an ad/);
+});
+
+test('email replies: digest per account, nothing new, not checked yet; correction outcomes', async () => {
+  const counts = [{ account: 'personal', label: 'important', n: 2 }, { account: 'personal', label: 'promo', n: 9 }, { account: 'personal', label: 'normal', n: 5 }, { account: 'college', label: 'normal', n: 1 }];
+  const important = [{ account: 'personal', sender: 'Rao', subject: 'Midsem seating' }, { account: 'personal', sender: 'HR', subject: 'Interview slot' }];
+  const d = await reply(planFor('email.digest', { account: '' }), [{ counts, important, synced_at: '2026-10-21T04:00:00Z' }]);
+  assert.equal(d.reply, 'Personal: 2 important. Rao: Midsem seating. HR: Interview slot. Plus 5 other and 9 ads. College: nothing important. Plus 1 other.');
+  assert.equal((await reply(planFor('email.digest', { account: '' }), [{ counts: [], important: [], synced_at: '2026-10-21T04:00:00Z' }])).reply, 'No new mail in the last day.');
+  assert.match((await reply(planFor('email.digest', { account: '' }), [{ counts: [], important: [], synced_at: null }])).reply, /not checked your mail yet/);
+  const find = { mode: 'find', query: 'unstop', label: 'promo' };
+  assert.equal((await reply(planFor('email.correct', find), [{ sender_count: 1, candidates: [], changed: 3, sender: 'Unstop' }])).reply, 'Okay. Mail from Unstop is now ads, and future mail from them will be too.');
+  assert.match((await reply(planFor('email.correct', find), [{ sender_count: 0, candidates: [], changed: 0, sender: null }])).reply, /couldn't find recent mail matching "unstop"/);
+  const many = await reply(planFor('email.correct', find), [{ sender_count: 2, candidates: ['Unstop', 'Unstop Jobs'], changed: 0, sender: null }]);
+  assert.match(many.reply, /Unstop, Unstop Jobs\. Which sender/);
+  assert.equal(many.needs_clarification, true);
+  const rule = await reply(planFor('email.correct', { mode: 'rule', sender: '@unstop.com', label: 'promo' }), [{ rules: 2, changed: 4 }]);
+  assert.equal(rule.reply, 'Done. Mail from @unstop.com will be filed as ads, and I moved 4 recent mails.');
+});

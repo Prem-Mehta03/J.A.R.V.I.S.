@@ -63,6 +63,45 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const okId = UUID.test(id);
 const clean = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000\u0008\u000b\u000c\u000e-\u001f\u007f]+/g, '').replace(/\r\n?/g, '\n').trim().slice(0, max) : '');
 const sql = (kind, text, params) => [{ json: { plan: { ok: true, action: 'sql', kind, sql: text, params, now_iso: isoIst(now) } } }];
+
+const EMAIL_LABELS = ['important', 'normal', 'promo'];
+const EMAIL_LIST_SQL = `select
+  (select coalesce(json_agg(m), '[]'::json) from (
+     select id, account, sender_name, sender_email, subject, snippet, received_at, label, label_source
+     from jarvis.email_messages where received_at > now() - interval '14 days' order by received_at desc limit 250
+   ) m) as emails,
+  (select coalesce(json_agg(r), '[]'::json) from (
+     select id, account, case when match_type = 'domain' then '@' || match_value else match_value end as sender, label from jarvis.email_rules order by account, match_value limit 300
+   ) r) as rules,
+  (select value #>> '{}' from jarvis.settings where key = 'email_synced_at') as synced_at`;
+// A correction relabels that sender's recent mail, remembers the sender as a rule, and is kept as an example for the sorter.
+const EMAIL_LABEL_SQL = `with m as (select * from jarvis.email_messages where id = $1::uuid),
+rule as (
+  insert into jarvis.email_rules (account, match_type, match_value, label, source) select account, 'sender', sender_email, $2, 'user' from m
+  on conflict (account, match_type, match_value) do update set label = excluded.label, source = 'user' returning id
+),
+fb as (
+  insert into jarvis.email_feedback (message_id, account, sender, subject, llm_label, user_label)
+  select gmail_id, account, sender_email, subject, label, $2 from m returning id
+),
+upd as (
+  update jarvis.email_messages set label = $2, label_source = 'user'
+  where (account, sender_email) in (select account, sender_email from m) and received_at > now() - interval '30 days' returning id
+)
+select (select count(*) from upd)::int as changed, (select sender_email from m) as sender, (select account from m) as account`;
+
+if (action === 'email_list') return sql('email_list', EMAIL_LIST_SQL, []);
+if (action === 'email_label') {
+  if (!okId) return fail('bad_id', 'That email has no valid id.');
+  const label = typeof body.label === 'string' ? body.label.trim().toLowerCase() : '';
+  if (!EMAIL_LABELS.includes(label)) return fail('bad_label', 'Pick important, normal or ad.');
+  return sql('email_label', EMAIL_LABEL_SQL, [id, label]);
+}
+if (action === 'email_rule_delete') {
+  if (!okId) return fail('bad_id', 'That rule has no valid id.');
+  return sql('email_rule_delete', `delete from jarvis.email_rules where id = $1::uuid returning id, match_value`, [id]);
+}
+
 const validDate = (str) => { const d = new Date(str + 'T00:00:00Z'); return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === str; };
 const ideaTitle = (text) => (text.split('\n').map((l) => l.trim()).find(Boolean) || '').slice(0, 80);
 

@@ -176,6 +176,62 @@ const IDEA_SQL = `insert into jarvis.items (type, title, body, status, source) v
 const IDEA_LIST_SQL = `select (select count(*) from jarvis.items where type = 'idea') as total,
   (select coalesce(json_agg(t), '[]'::json) from (select title from jarvis.items where type = 'idea' order by created_at desc limit 3) t) as latest`;
 
+const EMAIL_DIGEST_SQL = `select
+  (select coalesce(json_agg(t), '[]'::json) from (
+     select account, label, count(*)::int as n from jarvis.email_messages
+     where received_at > now() - interval '24 hours' and ($1 = '' or account = $1) group by account, label) t) as counts,
+  (select coalesce(json_agg(i), '[]'::json) from (
+     select account, coalesce(nullif(sender_name, ''), sender_email) as sender, left(subject, 80) as subject from jarvis.email_messages
+     where received_at > now() - interval '24 hours' and label = 'important' and ($1 = '' or account = $1) order by received_at desc limit 12) i) as important,
+  (select value #>> '{}' from jarvis.settings where key = 'email_synced_at') as synced_at`;
+
+// Finds recent mail by words in the sender or subject. Only when they all point at one sender is anything changed.
+// $1 stems (text array literal), $2 label, $3 account or ''.
+const EMAIL_FIND_SQL = `with cand as (
+  select id, gmail_id, account, sender_email, sender_name, subject, label, received_at from jarvis.email_messages
+  where received_at > now() - interval '14 days' and ($3 = '' or account = $3)
+    and not exists (select 1 from unnest($1::text[]) s where lower(sender_name || ' ' || sender_email || ' ' || subject) not like '%' || s || '%')
+),
+senders as (select account, sender_email, max(sender_name) as sender_name from cand group by account, sender_email),
+m as (select * from cand where (select count(*) from senders) = 1 order by received_at desc limit 1),
+rule as (
+  insert into jarvis.email_rules (account, match_type, match_value, label, source) select account, 'sender', sender_email, $2, 'user' from m
+  on conflict (account, match_type, match_value) do update set label = excluded.label, source = 'user' returning id
+),
+fb as (
+  insert into jarvis.email_feedback (message_id, account, sender, subject, llm_label, user_label) select gmail_id, account, sender_email, subject, label, $2 from m returning id
+),
+upd as (
+  update jarvis.email_messages set label = $2, label_source = 'user'
+  where (account, sender_email) in (select account, sender_email from m) and received_at > now() - interval '30 days' returning id
+)
+select (select count(*) from senders)::int as sender_count,
+       (select coalesce(json_agg(coalesce(nullif(s.sender_name, ''), s.sender_email)), '[]'::json) from (select * from senders limit 4) s) as candidates,
+       (select count(*) from upd)::int as changed,
+       (select coalesce(nullif(sender_name, ''), sender_email) from m) as sender`;
+
+// A sender address or a whole domain named outright becomes a rule. $1 sender or '@domain', $2 label, $3 account or '' (both).
+const EMAIL_RULE_SQL = `with accts as (select unnest(case when $3 = '' then array['personal', 'college'] else array[$3] end) as account),
+r as (
+  insert into jarvis.email_rules (account, match_type, match_value, label, source)
+  select account, case when $1 like '@%' then 'domain' else 'sender' end, ltrim($1, '@'), $2, 'user' from accts
+  on conflict (account, match_type, match_value) do update set label = excluded.label, source = 'user' returning id
+),
+u as (
+  update jarvis.email_messages set label = $2, label_source = 'user'
+  where (sender_email = $1 or '@' || split_part(sender_email, '@', 2) = $1) and received_at > now() - interval '30 days' and ($3 = '' or account = $3) returning id
+)
+select (select count(*) from r)::int as rules, (select count(*) from u)::int as changed`;
+
+const FREE_MAIL = ['gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.in', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'proton.me', 'protonmail.com', 'rediffmail.com'];
+const mailLabel = (v) => {
+  const t = String(v || '').toLowerCase().trim();
+  if (['important', 'urgent'].includes(t)) return 'important';
+  if (['normal', 'regular', 'ordinary'].includes(t)) return 'normal';
+  if (['promo', 'promotion', 'promotions', 'ad', 'ads', 'advert', 'advertisement', 'spam'].includes(t)) return 'promo';
+  return '';
+};
+
 const SPACE_SQL = `insert into jarvis.spaces (slug, label) values ($1, $2)
 on conflict (slug) do nothing
 returning slug, label`;
@@ -327,6 +383,30 @@ switch (L.intent) {
 
   case 'idea.list':
     return finish({ intent: 'idea.list', action: 'sql', sql: IDEA_LIST_SQL, params: [], provider, data: {} });
+
+  case 'email.digest': {
+    const account = ['personal', 'college'].includes(L.account) ? L.account : '';
+    return finish({ intent: 'email.digest', action: 'sql', sql: EMAIL_DIGEST_SQL, params: [account], provider, data: { account } });
+  }
+
+  case 'email.correct': {
+    const label = mailLabel(L.label);
+    if (!label) return ask('Should that mail be important, normal, or an ad?', { provider });
+    const query = cleanText(L.query || L.title, 100);
+    if (!query) return ask('Which sender do you mean?', { provider });
+    const account = ['personal', 'college'].includes(L.account) ? L.account : '';
+    const addr = query.toLowerCase().replace(/\s+/g, '');
+    const isAddress = /^[^\s@]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(addr);
+    const isDomain = /^@?[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(addr) && !isAddress;
+    if (isAddress || isDomain) {
+      const sender = isAddress ? addr : '@' + addr.replace(/^@/, '');
+      if (isDomain && FREE_MAIL.includes(sender.slice(1))) return ask(`I won't file every ${sender.slice(1)} address the same way. Tell me the sender's name or full address.`, { provider });
+      return finish({ intent: 'email.correct', action: 'sql', sql: EMAIL_RULE_SQL, params: [sender, label, account], provider, data: { mode: 'rule', sender, label } });
+    }
+    const stems = stemsOf(query);
+    if (!stems.length) return ask('Which sender do you mean?', { provider });
+    return finish({ intent: 'email.correct', action: 'sql', sql: EMAIL_FIND_SQL, params: ['{' + stems.join(',') + '}', label, account], provider, data: { mode: 'find', query, label } });
+  }
 
   case 'space.create': {
     const label = cleanText(L.space_label || L.title, 40).replace(/[^A-Za-z0-9 &-]/g, '').trim();

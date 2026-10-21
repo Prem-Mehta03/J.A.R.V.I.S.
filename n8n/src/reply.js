@@ -260,6 +260,42 @@ switch (plan.intent) {
     return done({ reply: `You have ${total} ${total === 1 ? 'idea' : 'ideas'}. The latest ${latest.length === 1 ? 'is' : 'are'}: ${latest.join('; ')}.` });
   }
 
+  case 'email.digest': {
+    const r = rows[0];
+    if (!r.synced_at) return done({ reply: 'I have not checked your mail yet. Open the Email tab and tap Refresh.' });
+    const counts = Array.isArray(r.counts) ? r.counts : [];
+    const top = Array.isArray(r.important) ? r.important : [];
+    const count = (acc, label) => Number((counts.find((c) => c.account === acc && c.label === label) || {}).n) || 0;
+    const accounts = plan.data.account ? [plan.data.account] : ['personal', 'college'];
+    const parts = [];
+    for (const acc of accounts) {
+      const imp = count(acc, 'important');
+      const norm = count(acc, 'normal');
+      const ads = count(acc, 'promo');
+      if (!imp && !norm && !ads) continue;
+      const name = acc === 'personal' ? 'Personal' : 'College';
+      const shown = top.filter((m) => m.account === acc).slice(0, 3).map((m) => `${m.sender}: ${m.subject}`);
+      let text = imp ? `${name}: ${imp} important. ${shown.join('. ')}${imp > shown.length ? `. And ${imp - shown.length} more` : ''}.` : `${name}: nothing important.`;
+      const rest = [norm ? `${norm} other` : '', ads ? `${ads} ${ads === 1 ? 'ad' : 'ads'}` : ''].filter(Boolean);
+      if (rest.length) text += ` Plus ${rest.join(' and ')}.`;
+      parts.push(text);
+    }
+    return done({ reply: parts.length ? parts.join(' ') : 'No new mail in the last day.' });
+  }
+
+  case 'email.correct': {
+    const r = rows[0];
+    const word = { important: 'important', normal: 'normal', promo: 'ads' }[plan.data.label];
+    if (plan.data.mode === 'rule') {
+      const n = Number(r.changed) || 0;
+      return done({ reply: `Done. Mail from ${plan.data.sender} will be filed as ${word}${n ? `, and I moved ${n} recent ${n === 1 ? 'mail' : 'mails'}` : ''}.` });
+    }
+    const senders = Number(r.sender_count) || 0;
+    if (senders === 0) return done({ reply: `I couldn't find recent mail matching "${plan.data.query}".` });
+    if (senders > 1) return done({ reply: `I found mail from ${(Array.isArray(r.candidates) ? r.candidates : []).join(', ')}. Which sender do you mean?`, needs_clarification: true });
+    return done({ reply: `Okay. Mail from ${r.sender} is now ${word}, and future mail from them will be too.` });
+  }
+
   case 'space.create': {
     const r = rows[0] || {};
     if (r.slug) return done({ reply: `Created the ${r.label} space.`, space: { slug: r.slug, label: r.label } });

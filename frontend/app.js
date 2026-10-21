@@ -4,6 +4,7 @@ import { attachOrb, setOrbMode, setOrbLevel } from './orb.js';
 import { canSpeak, deviceVoices, createSpeaker } from './voice.js';
 import { createVoiceMode } from './voicemode.js';
 import { createLife } from './lifeviews.js';
+import { createEmail } from './emailview.js';
 
 const LS = { url: 'jarvis.url', token: 'jarvis.token', cache: 'jarvis.cache', chat: 'jarvis.chat', voice: 'jarvis.voice' };
 const store = {
@@ -93,6 +94,8 @@ const voiceMode = createVoiceMode({
 const saveCache = () => store.set(LS.cache, JSON.stringify({ items: state.items, habits: state.habits, ideas: state.ideas, links: state.links, spaces: state.spaces, at: (state.loadedAt || new Date()).toISOString() }));
 
 const life = createLife({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), saveCache: () => saveCache(), emptyBox: (a, b) => emptyBox(a, b), group: (...a) => group(...a), openSheet: (i) => openSheet(i) });
+
+const mailv = createEmail({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), emptyBox: (a, b) => emptyBox(a, b) });
 
 async function refresh() {
   // Only say "waking up" if the server is really slow (a warm server answers in a few seconds).
@@ -289,7 +292,7 @@ function datesView(now) {
 }
 
 // ---------- render ----------
-const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView, study: life.studyView };
+const VIEWS = { chat: chatView, today: todayView, tasks: tasksView, reminders: remindersView, dates: datesView, habits: life.habitsView, ideas: life.ideasView, study: life.studyView, email: mailv.emailView };
 
 function renderMain() {
   const now = new Date();
@@ -308,7 +311,7 @@ function renderDrawer() {
   ui.drawer.inert = !open; ui.drawer.setAttribute('aria-hidden', String(!open));
   const todayN = (() => { const g = L.groupToday(state.items, now); return g.rail.length + g.overdue.length; })();
   const cnt = (type) => state.items.filter((i) => i.type === type).length;
-  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')], ['dates', 'calendar', 'Dates', L.listDates(state.items, now).length], ['study', 'book', 'Study', L.listExams(state.items, now).length + L.collegeWork(state.items).length], ['habits', 'flame', 'Habits', state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length], ['ideas', 'bulb', 'Ideas', state.ideas.length]];
+  const nav = [['chat', 'chat', 'Chat', null], ['today', 'sun', 'Today', todayN], ['tasks', 'check', 'Tasks', cnt('task')], ['reminders', 'bell', 'Reminders', cnt('reminder')], ['dates', 'calendar', 'Dates', L.listDates(state.items, now).length], ['study', 'book', 'Study', L.listExams(state.items, now).length + L.collegeWork(state.items).length], ['habits', 'flame', 'Habits', state.habits.filter((h) => !L.streakInfo(h.dates, L.dateStr(now)).doneToday).length], ['ideas', 'bulb', 'Ideas', state.ideas.length], ['email', 'mail', 'Email', mailv.badge()]];
   const spaces = [{ slug: 'all', label: 'All spaces' }, ...state.spaces];
   ui.drawer.replaceChildren(
     el('div', { class: 'd-head' },
@@ -332,7 +335,7 @@ function renderSheet() {
   ui.sheet.hidden = !item;
   if (!item) { ui.sheet.replaceChildren(); return; }
   if (item.kind) {
-    const node = life.sheetFor(item);
+    const node = life.sheetFor(item) || mailv.sheetFor(item);
     if (node) { ui.sheet.replaceChildren(node); ui.sheet.onclick = (e) => { if (e.target === ui.sheet) { state.sheet = null; renderSheet(); } }; }
     return;
   }
