@@ -435,5 +435,9 @@ if (window.visualViewport) {
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden && voiceMode.active) voiceMode.close(); if (!document.hidden && ui.main && store.get(LS.url) && !state.busy) refresh(); });
 setInterval(() => { if (ui.main && !document.hidden && !state.sheet && !state.drawer && ['today', 'tasks', 'reminders'].includes(state.view)) renderMain(); }, 60000);
+// If a file of the app is out of date or broken, say so on screen instead of leaving a blank panel.
+const showFault = (msg, file) => { if (msg && !/ResizeObserver/i.test(msg)) setStatus(`Something broke: ${msg}${file ? ' (' + String(file).split('/').pop() + ')' : ''}. Close and reopen the app. If it stays, send this line to Claude.`, true); };
+window.addEventListener('error', (e) => showFault(e.message, e.filename));
+window.addEventListener('unhandledrejection', (e) => showFault(e.reason && e.reason.message ? e.reason.message : String(e.reason || ''), ''));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 boot();

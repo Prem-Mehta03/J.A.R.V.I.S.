@@ -1,9 +1,9 @@
 // Caches the app shell so the app opens instantly and offline. Data is never cached here (the app keeps its own copy).
-const CACHE = 'jarvis-shell-v9';
+const CACHE = 'jarvis-shell-v10';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'logic.js', 'orb.js', 'icons.js', 'voice.js', 'voicemode.js', 'lifeviews.js', 'emailview.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
@@ -14,7 +14,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return; // server calls go straight to the network
   // Network first so updates arrive on the next open; fall back to the cached copy when offline.
   e.respondWith(
-    fetch(req).then((res) => {
+    // no-cache: always check with the server, so the files of one release never mix with an older copy kept by the browser.
+    fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req).then((m) => m || caches.match('./')))

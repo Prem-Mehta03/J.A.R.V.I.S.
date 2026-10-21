@@ -242,3 +242,15 @@ export function ideaParts(body) {
   const first = lines.find((l) => l.trim()) || '';
   return { first: first.trim(), more: lines.slice(lines.indexOf(first) + 1).join('\n').trim() };
 }
+
+// ---- Study: exams are important dates in the College space; college work is tasks in it ----
+export const COLLEGE = 'college';
+export function listExams(items, now) {
+  return items
+    .filter((i) => i.type === 'date' && i.space === COLLEGE && itemTime(i))
+    .map((item) => ({ item, days: dayDiff(itemTime(item), now), date: dateStr(itemTime(item)) }))
+    .filter((e) => e.days >= 0)
+    .sort((a, b) => itemTime(a.item) - itemTime(b.item));
+}
+export const collegeWork = (items) => items.filter((i) => i.type === 'task' && i.space === COLLEGE);
+export const hasClock = (d) => { const s = shift(d); return s.getUTCHours() + s.getUTCMinutes() > 0; };
