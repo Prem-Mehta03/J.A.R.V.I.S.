@@ -1,6 +1,6 @@
 # Webhook contract
 
-Status: `jarvis-ping` (M0) and `jarvis` (M2) exist. The rest is the plan for later milestones and may change.
+Status: `jarvis-ping` (M0), `jarvis` (M2), `jarvis-items` (M4) and `jarvis-transcribe` (M5) exist. The rest is the plan for later milestones and may change.
 
 Every client (Siri Shortcuts, the PWA) talks to n8n through webhooks. One shared token protects all of them.
 
@@ -64,6 +64,14 @@ Same `X-Jarvis-Token` header. No language model involved: fixed queries only.
 Errors (HTTP 200, `ok:false`, with a `reply`): `bad_action`, `bad_id`, `not_found` (already closed), `db_error`. A wrong token is HTTP 403.
 
 CORS: both `jarvis` and `jarvis-items` have Allowed Origins `*` on the Webhook node. That is safe here because the token travels in a header, not a cookie, so a foreign page cannot ride on a logged-in session; it still needs the token.
+
+## `POST /webhook/jarvis-transcribe` (M5, used by the app's microphone)
+
+Same `X-Jarvis-Token` header. Request is `multipart/form-data` with one file field named `audio` (the app sends `voice.m4a` from iPhone, `voice.webm` from Chrome). Speech to text runs on Groq's free Whisper (`whisper-large-v3-turbo`, English). The app then sends the text to `jarvis` as a normal chat message.
+
+Response: `{"ok": true, "text": "remind me tomorrow at 6 pm to call home"}`, or `{"ok": false, "error": "...", "reply": "..."}` with `no_audio`, `empty` (silence; Whisper's stock phrases such as "Thank you." are treated as silence), `busy` (rate limit) or `stt_error` (plus a short `detail`).
+
+Limits: Groq's free tier allows about 20 requests a minute and 2,000 a day, far above personal use. Keep recordings under a minute.
 
 ## The token
 

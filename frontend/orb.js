@@ -11,6 +11,7 @@ const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 const orbs = new Set();
 let mode = 'idle';
 let cur = { ...MODES.idle };
+let lvT = 0, lv = 0;
 let last = 0, angle = 0, ringAngle = 0, t = 0, running = false;
 
 function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; }; }
@@ -46,6 +47,7 @@ const RINGS = [
 ];
 
 export function setOrbMode(m) { if (MODES[m]) mode = m; }
+export function setOrbLevel(v) { lvT = Math.max(0, Math.min(1, v)); }
 export function getOrbMode() { return mode; }
 
 export function attachOrb(canvas, { count = 560, rings = true } = {}) {
@@ -58,6 +60,7 @@ function frame(ts) {
   const target = MODES[mode];
   const k = Math.min(1, dt * 3.5);
   for (const key of Object.keys(cur)) cur[key] += (target[key] - cur[key]) * k;
+  lv += (lvT - lv) * Math.min(1, dt * 12);
   const slow = reduced ? 0.1 : 1;
   angle += cur.spin * dt * slow; ringAngle += cur.ring * dt * slow; t += dt * slow;
   for (const o of orbs) {
@@ -77,8 +80,8 @@ function draw(o) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, size, size);
   const cx = size / 2, cy = size / 2;
-  const R = size * 0.37 * cur.scale * (1 + 0.02 * Math.sin(t * 1.6));
-  const e = cur.energy;
+  const R = size * 0.37 * cur.scale * (1 + 0.02 * Math.sin(t * 1.6)) * (1 + 0.08 * lv);
+  const e = Math.min(1.2, cur.energy + 0.4 * lv);
   ctx.globalCompositeOperation = 'source-over';
 
   let g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
@@ -102,7 +105,7 @@ function draw(o) {
     ctx.globalAlpha = Math.min(1, (0.2 + 0.8 * depth) * (0.4 + e) * p.a);
     ctx.strokeStyle = p.col;
     ctx.lineWidth = Math.max(0.7, p.w * unit * 1.5);
-    const len = (3 + 9 * p.len) * cur.streak * unit;
+    const len = (3 + 9 * p.len) * (cur.streak + lv) * unit;
     let vx = -z0, vy = x0 * st; const vl = Math.hypot(vx, vy) || 1; vx /= vl; vy /= vl;
     ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - vx * len, sy - vy * len); ctx.stroke();
   }
@@ -120,10 +123,10 @@ function draw(o) {
     ctx.beginPath(); ctx.arc(cx, cy, R * 1.3, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
   }
 
-  if (cur.ripple > 0.02) {
+  if (cur.ripple + lv > 0.02) {
     for (let i = 0; i < 2; i++) {
       const ph = (t * 0.7 + i * 0.5) % 1;
-      ctx.globalAlpha = (1 - ph) * 0.4 * cur.ripple; ctx.strokeStyle = 'rgb(255,184,77)'; ctx.lineWidth = Math.max(0.8, unit * 1.2);
+      ctx.globalAlpha = (1 - ph) * 0.4 * (cur.ripple + lv); ctx.strokeStyle = 'rgb(255,184,77)'; ctx.lineWidth = Math.max(0.8, unit * 1.2);
       ctx.beginPath(); ctx.arc(cx, cy, R * (1.05 + 0.45 * ph), 0, TAU); ctx.stroke();
     }
   }

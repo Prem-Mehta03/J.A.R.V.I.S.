@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json from the Code-node sources in n8n/src/.
+"""Build n8n/workflows/01-chat-router.json, 02-reminder-dispatcher.json and 03-items-api.json and 04-voice.json from the Code-node sources in n8n/src/.
 
 Standard library only.
 
@@ -20,6 +20,7 @@ SRC = ROOT / "n8n" / "src"
 OUT = ROOT / "n8n" / "workflows" / "01-chat-router.json"
 OUT2 = ROOT / "n8n" / "workflows" / "02-reminder-dispatcher.json"
 OUT3 = ROOT / "n8n" / "workflows" / "03-items-api.json"
+OUT4 = ROOT / "n8n" / "workflows" / "04-voice.json"
 NAMESPACE = uuid.UUID("6f1c2a52-5d1e-4c1f-9d6b-0a4f3c1b7e10")  # fixed, so rebuilding gives identical ids
 
 
@@ -390,6 +391,62 @@ items_api = {
 }
 
 
+voice_nodes = [
+    node("Webhook", "n8n-nodes-base.webhook", 2.1, [0, 300], {
+        "httpMethod": "POST",
+        "path": "jarvis-transcribe",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {"allowedOrigins": "*"},
+    }, webhookId=uid("webhook path jarvis-transcribe"), credentials={"httpHeaderAuth": {"id": "", "name": "Jarvis token"}}),
+
+    node("Check audio", "n8n-nodes-base.code", 2, [220, 300], {"jsCode": code("transcribe-check.js")}),
+
+    if_node("Has audio?", [440, 300], "={{ $json.ok === true }}"),
+
+    node("Whisper", "n8n-nodes-base.httpRequest", 4.5, [660, 200], {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": True,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {"parameters": [
+            {"parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "audio"},
+            {"name": "model", "value": "whisper-large-v3-turbo"},
+            {"name": "language", "value": "en"},
+            {"name": "temperature", "value": "0"},
+            {"name": "response_format", "value": "json"},
+            {"name": "prompt", "value": "Jarvis. Remind me tomorrow at 6 pm to call home. Add a task to finish the lab report by Friday. What is on my list today?"},
+        ]},
+        "options": {"timeout": 30000, "response": {"response": {"fullResponse": True, "neverError": True}}},
+    }, credentials={"httpHeaderAuth": {"id": "", "name": "Groq key"}}, onError="continueRegularOutput"),
+
+    node("Transcript", "n8n-nodes-base.code", 2, [880, 200], {"jsCode": code("transcribe-judge.js")}),
+
+    node("Respond", "n8n-nodes-base.respondToWebhook", 1.5, [1100, 300], {
+        "respondWith": "firstIncomingItem",
+        "options": {},
+    }),
+]
+
+voice_connections = {
+    "Webhook": link(["Check audio"]),
+    "Check audio": link(["Has audio?"]),
+    "Has audio?": link(["Whisper"], ["Respond"]),
+    "Whisper": link(["Transcript"]),
+    "Transcript": link(["Respond"]),
+}
+
+voice = {
+    "name": "04 Voice transcription",
+    "nodes": voice_nodes,
+    "connections": voice_connections,
+    "active": False,
+    "settings": {"executionOrder": "v1"},
+}
+
+
 def write(path, wf):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -401,3 +458,4 @@ if __name__ == "__main__":
     write(OUT, workflow)
     write(OUT2, dispatcher)
     write(OUT3, items_api)
+    write(OUT4, voice)

@@ -208,3 +208,12 @@ svg { display: block; flex: none; }
 .btn.quiet { background: var(--card); color: var(--muted); box-shadow: none; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* voice */
+.mic.rec { background: var(--gold); color: #301400; box-shadow: var(--glow); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(255,184,77,.12), var(--glow); } }
+.mic[hidden] { display: none; }
+.icon-btn.off { color: var(--outline); }
+.replay { margin-left: auto; width: 32px; height: 32px; margin-top: -4px; margin-bottom: -4px; border-radius: 16px; display: flex; align-items: center; justify-content: center; color: var(--outline); }
+.replay:active { background: var(--card); color: var(--gold); }
+.field input:disabled { color: var(--muted); }

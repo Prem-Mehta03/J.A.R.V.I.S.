@@ -85,3 +85,10 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Strict CSP** (no inline script or style) and text-only rendering (`textContent`), so a stored title can never run as code.
 - **Redesign (Stitch, "Warm Luminescence").** Dark only, amber accent, chat first, navigation in a left drawer (no bottom tab bar, as asked). Not taken from the mockups because they were invented data: the "Jarvis Plus" card, user name, version badges, "Pay Now", the memory photo and AI insight banners. The mic button is a placeholder until M5.
 - **The orb** is a canvas particle animation (`orb.js`), no image. Modes: idle, listening (while typing, until real voice exists), thinking (waiting for the reply), replying.
+
+## Voice (M5)
+
+- **Speech to text on Groq Whisper** (free, uses the Groq key already in n8n) rather than the browser's speech recognition, which is unreliable in installed iPhone web apps. The app records, the server transcribes, then the text goes through the normal chat path, so voice and typing behave identically.
+- **Spoken replies use the phone's own voices** (free, offline). The speaker button in the top bar turns them on or off; they apply to replies to voice requests only, so typing never makes it talk. Each reply also has a small speaker icon to read it aloud again.
+- **Hands-free is a Shortcut, not the app.** iPhone web apps cannot listen in the background, and the app cannot be started by voice reliably. The "Jarvis" Shortcut (dictate, call the server, speak) works with the screen locked.
+- **Recording stops by itself** after about 1.4 seconds of quiet, or you tap the button.

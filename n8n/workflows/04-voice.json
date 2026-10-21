@@ -1,0 +1,236 @@
+{
+  "name": "04 Voice transcription",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jarvis-transcribe",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "1bf8ae65-a9cf-5e84-980b-c4591ce8a98b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "1743b352-c1e2-52a8-9798-e310e3e5833d",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Jarvis token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Check audio\": makes sure the request carried a recording, and gives the file a name Whisper recognises.\nconst item = $input.first();\nconst bin = item.binary && item.binary.audio;\nif (!bin) {\n  return [{ json: { ok: false, error: 'no_audio', reply: \"I didn't receive any audio. Try again.\" } }];\n}\nconst mime = String(bin.mimeType || '').toLowerCase();\nlet ext = 'm4a';\nif (mime.includes('webm')) ext = 'webm';\nelse if (mime.includes('ogg')) ext = 'ogg';\nelse if (mime.includes('wav')) ext = 'wav';\nelse if (mime.includes('mpeg') || mime.includes('mp3')) ext = 'mp3';\nbin.fileName = 'voice.' + ext;\nreturn [{ json: { ok: true, mime }, binary: { audio: bin } }];\n"
+      },
+      "id": "9c0ffef1-e4b1-51cc-a09f-df37ce17c315",
+      "name": "Check audio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6e62716c-0df5-521f-8f9c-22625cd165ce",
+              "leftValue": "={{ $json.ok === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ce2ea94b-8080-54d1-9cf6-fb43d7910ccd",
+      "name": "Has audio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "audio"
+            },
+            {
+              "name": "model",
+              "value": "whisper-large-v3-turbo"
+            },
+            {
+              "name": "language",
+              "value": "en"
+            },
+            {
+              "name": "temperature",
+              "value": "0"
+            },
+            {
+              "name": "response_format",
+              "value": "json"
+            },
+            {
+              "name": "prompt",
+              "value": "Jarvis. Remind me tomorrow at 6 pm to call home. Add a task to finish the lab report by Friday. What is on my list today?"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a7b7db19-2aac-5b7e-8505-2f650bfefa49",
+      "name": "Whisper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Groq key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Transcript\": turns the speech-to-text answer into { ok, text } or a short, speakable error.\nconst r = $input.first().json || {};\nconst body = r.body && typeof r.body === 'object' ? r.body : {};\nconst status = Number(r.statusCode);\n\nif (status >= 200 && status < 300 && typeof body.text === 'string') {\n  const text = body.text.trim();\n  // On near-silence, Whisper tends to invent a stock phrase. Treat those as \"nothing heard\".\n  const stock = /^(thank you\\.?|thanks\\.?|thanks for watching\\.?|you\\.?|bye\\.?|\\.+)$/i;\n  if (!text || stock.test(text)) {\n    return [{ json: { ok: false, error: 'empty', reply: \"I didn't catch anything. Try again.\" } }];\n  }\n  return [{ json: { ok: true, text } }];\n}\nif (status === 429) {\n  return [{ json: { ok: false, error: 'busy', reply: 'The voice service is busy. Try again in a minute.' } }];\n}\nconst detail = String(body.error && body.error.message ? body.error.message : (r.error || r.body || '')).slice(0, 200);\nreturn [{ json: { ok: false, error: 'stt_error', reply: \"I couldn't make that out. Try again.\", detail } }];\n"
+      },
+      "id": "c5bea979-16db-5489-93b5-85b405015a00",
+      "name": "Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "id": "fa1b6517-3a37-56fd-95f9-6a21c9cf7578",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Check audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check audio": {
+      "main": [
+        [
+          {
+            "node": "Has audio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has audio?": {
+      "main": [
+        [
+          {
+            "node": "Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper": {
+      "main": [
+        [
+          {
+            "node": "Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcript": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

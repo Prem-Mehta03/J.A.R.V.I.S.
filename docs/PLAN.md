@@ -98,11 +98,11 @@ Each milestone ends with a commit and a working demo.
 - [x] **M3: Reminder engine (built, see docs/M3-checklist.md).** A dispatcher checks every minute (starting up to a minute early so alerts land on time) and pushes due reminders and date alerts (through ntfy at first, Bark from M3.1). Dates alert at 9 AM a week before, a day before and on the day. If a push fails, a Google Calendar event replaces it. Mark M3 as fully done after the checklist's real-service tests pass.
 - [x] **M3.1: Push through Bark (built, see docs/M3.1-checklist.md).** Bark replaces ntfy; everything else in M3 is unchanged. Mark M3 and M3.1 done after the checklist's real-service tests pass.
 - [x] **M4: Frontend PWA (built, see docs/M4-checklist.md).** Chat plus Today, Tasks, Reminders and Dates tabs, space filter, mark done or cancel, offline copy, manifest and Home Screen install, hosted on GitHub Pages. Backend addition: `03-items-api.json` (`jarvis-items`) and CORS on the webhooks. Mark fully done after the checklist's real-device tests pass.
-- [ ] **M5: Voice and Siri.** Mic to Whisper, spoken replies, "Wake up Jarvis" shortcut, "Jarvis reminders" shortcut.
+- [x] **M5: Voice and Siri (built, see docs/M5-checklist.md).** Mic in the app, speech to text on Groq Whisper (free), spoken replies in the phone's own voice, orb reacts to the voice level. Siri shortcuts: "Jarvis" (hands-free, no app), "Jarvis reminders", and "Wake up Jarvis" (opens the app, listening). Mark fully done after the real-device tests pass.
 - [ ] **M6: iOS Reminders sync.** Two-way Shortcut sync and the voice "done" shortcut.
 - [ ] **M7: Habits, study, ideas.** Tables, handlers, tabs, streaks, weekly summary.
 - [ ] **M8: Email intelligence.** Per-account fetch, classification, digest, correction loop.
-- [ ] **M9: Morning briefing and calendar.** Daily push combining schedule, tasks, dates, habits, weather, email digest.
+- [ ] **M9: Morning briefing and calendar.** Daily push combining schedule, tasks, dates, habits, weather, email digest. Also: yesterday's cleanup. The brief lists reminders from yesterday that were never marked done and asks whether to close them all; the Reminders tab already shows them under "Waiting to fire" so they can be checked first, then "close them" or "keep X" by chat. Needs a bulk-close action in `jarvis-items`.
 - [ ] **M10: Web automation.** Page watching, digests, lookups.
 - [ ] **M11: Hardening.** Scheduled database export backup, error alerts, LLM fallback, docs.
 
