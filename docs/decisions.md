@@ -146,3 +146,13 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Cleanup scope:** only reminders from before today that fired, are not repeating, have no parent (exam alerts excluded). "Close all" in the app or "close them" by chat; "keep X" skips matches.
 - **College work summary** replaces the Sunday summary: overdue, today, upcoming, no date; shown in the brief and on request.
 - Workflow 08 does not save successful executions, to keep memory low on Render.
+
+## Hardening (M11)
+
+- **Backup target: a private GitHub repository** (your choice over Gmail, Drive or a second database): one file per day, history for free, easy to download, no mailbox clutter. It needs one more secret, a fine-grained token limited to that repository (Contents read and write), kept as the n8n credential `GitHub backup token`. The repository name is a setting (`backup_repo`), not typed into nodes. **The workflow checks the repository is private before every upload and refuses otherwise.** An earlier draft stored the backup in Gmail; it was dropped before release.
+- **The Bark key is left out of the backup** and stored email is not backed up (it refills from Gmail). Everything else is.
+- **Restore is a SQL function** (`import_all`), not a script, so it works from the Supabase SQL editor on any machine. It retries tables until foreign keys are satisfied, so no table order has to be maintained.
+- **One workflow (09) holds backup, alerts and health check**, to keep the number of always-on workflows (memory on Render) down. Alerts are de-duplicated per problem for 6 hours (kept in the settings table).
+- **Error alerts need the Error workflow set by hand** on each workflow in n8n (the setting stores an instance-specific id, so it cannot be shipped in the JSON).
+- **Quiet failures are caught by the health check**, because the Gmail and Calendar requests are set to continue on error (a crash would never reach the error workflow). Workflow 07 now stores which Gmail account failed (`email_status`).
+- **LLM fallback needed no work:** router and email sorting already use Gemini then Groq; nothing else calls a model.

@@ -144,3 +144,9 @@ Chat intents: `email.digest` (optional `account`) and `email.correct` (`query`, 
 `jarvis-items` action `close_stale` closes reminders from before today that fired but were never done (not repeating, not exam alerts) and answers `{ok, closed, titles, reply}`.
 
 Chat intents: `college.summary`, `cleanup.close` (optional keep words: "close them but keep hostel fees"), `brief.settime` (HH:MM, 04:00 to 21:59). The app also routes "brief me" style phrases to `jarvis-brief`.
+
+## Backup (M11)
+
+`POST /webhook/jarvis-backup` (token header) runs the backup now and answers `{ok, reply}`; for example `Backup saved to GitHub (10 KB, 34 rows).` Failures answer `ok: false` with the reason and send a Bark alert. The same workflow also runs nightly at 3:15 AM, a health check every 6 hours, and is the n8n **Error workflow** for the others.
+
+SQL: `jarvis.export_all()` returns every table (except stored email, schema log and the Bark key) as one JSON document; `jarvis.import_all(json)` restores it (existing rows kept, settings overwritten).

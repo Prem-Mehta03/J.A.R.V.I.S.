@@ -1,0 +1,857 @@
+{
+  "name": "09 Backup and alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c31762c3-230a-566c-a284-6cb13abbd3c3",
+      "name": "Every night",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jarvis-backup",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "1bf8ae65-a9cf-5e84-980b-c4591ce8a98b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        260
+      ],
+      "webhookId": "f23ecd1b-585a-59ec-b3ac-c1382216e49f",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Jarvis token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "e364a41d-3b55-53ab-8447-8bc3127df12a",
+      "name": "Every 6 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        500
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2e598591-d59c-5bb5-a4fd-ccb5950a830e",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select jarvis.export_all()::text as data, to_char(now() at time zone 'Asia/Kolkata', 'YYYY-MM-DD') as today,\n  (select value #>> '{}' from jarvis.settings where key = 'backup_repo') as repo",
+        "options": {}
+      },
+      "id": "5702348a-1893-57eb-9293-139b4503e995",
+      "name": "Export",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        240,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Prepare\": which repository and file the backup goes to.\nconst exp = $input.first().json || {};\nconst repo = typeof exp.repo === 'string' ? exp.repo.trim() : '';\nconst today = /^\\d{4}-\\d{2}-\\d{2}$/.test(exp.today || '') ? exp.today : '';\nconst okRepo = /^[A-Za-z0-9_.-]{1,100}\\/[A-Za-z0-9_.-]{1,100}$/.test(repo);\nreturn [{ json: { repo: okRepo ? repo : '', today, path: `backups/jarvis-${today || 'undated'}.json` } }];\n"
+      },
+      "id": "9087a643-12a8-5890-9cb7-986203559a92",
+      "name": "Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.github.com/repos/' + $json.repo }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "User-Agent",
+              "value": "jarvis-backup"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "818d1806-7d35-5666-b9e3-819119f3b915",
+      "name": "Check repo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        680,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "GitHub backup token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.github.com/repos/' + $('Prepare').first().json.repo + '/contents/' + $('Prepare').first().json.path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "User-Agent",
+              "value": "jarvis-backup"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "930b972e-f42c-5de0-9788-168fdb4bbfec",
+      "name": "Existing file",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        900,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "GitHub backup token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Build file\": checks the repository is private, then packs the backup for GitHub's contents API.\nconst exp = $('Export').first().json || {};\nconst prep = $('Prepare').first().json || {};\nconst repoInfo = $('Check repo').first().json || {};\nconst existing = $input.first().json || {};\nconst data = typeof exp.data === 'string' ? exp.data : '';\nconst fail = (error) => [{ json: { content: '', error } }];\n\nif (!prep.repo) return fail('No backup repository is set. Set it with: update jarvis.settings set value = \\'\"owner/repo\"\\' where key = \\'backup_repo\\';');\nif (!prep.today) return fail('Could not work out today\\'s date.');\nif (!data) return fail('The export came back empty.');\nif (data.length > 20 * 1024 * 1024) return fail('The backup is too large for one file.');\nconst status = Number(repoInfo.statusCode) || 0;\nif (status === 401) return fail('GitHub rejected the token. Make a new one and update the GitHub backup token credential in n8n.');\nif (status === 404) return fail(`GitHub cannot find ${prep.repo}, or the token has no access to it.`);\nif (status < 200 || status >= 300) return fail(`GitHub answered HTTP ${status || 'nothing'} when checking the repository.`);\nconst info = repoInfo.body && typeof repoInfo.body === 'object' ? repoInfo.body : {};\nif (info.private !== true) return fail(`${prep.repo} is not private. Make the repository private before backing up into it.`);\n\nlet counts = {};\ntry {\n  const t = JSON.parse(data).tables || {};\n  for (const k of Object.keys(t)) counts[k] = Array.isArray(t[k]) ? t[k].length : 0;\n} catch (e) { return fail('The export was not valid JSON.'); }\n\nconst sha = existing.statusCode === 200 && existing.body && typeof existing.body.sha === 'string' ? existing.body.sha : '';\nconst body = { message: `Jarvis backup ${prep.today}`, content: Buffer.from(data, 'utf8').toString('base64') };\nif (sha) body.sha = sha;\nreturn [{ json: { repo: prep.repo, path: prep.path, put_body: JSON.stringify(body), bytes: data.length, counts, replaced: !!sha } }];\n"
+      },
+      "id": "f8b68110-1827-5851-ae16-4e4e618d9d2e",
+      "name": "Build file",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://api.github.com/repos/' + $json.repo + '/contents/' + $json.path }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            },
+            {
+              "name": "User-Agent",
+              "value": "jarvis-backup"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.put_body }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "dd55f2a9-e049-5208-b463-2b1f79d08a57",
+      "name": "Save to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1340,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "GitHub backup token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Backup result\": what happened when the backup went to GitHub.\nconst built = $('Build file').first().json || {};\nconst res = $input.first().json || {};\nconst status = Number(res.statusCode) || 0;\nconst ok = !built.error && (status === 200 || status === 201);\nlet why = built.error || '';\nif (!ok && !why) {\n  const msg = res.body && typeof res.body === 'object' && typeof res.body.message === 'string' ? res.body.message.slice(0, 120) : '';\n  why = `GitHub refused it (HTTP ${status || 'no answer'}${msg ? ': ' + msg : ''}).`;\n}\nconst rows = Object.values(built.counts || {}).reduce((a, b) => a + b, 0);\nconst reply = ok\n  ? `Backup saved to GitHub (${Math.round((built.bytes || 0) / 1024)} KB, ${rows} rows${built.replaced ? ', replaced today\\'s file' : ''}).`\n  : `Backup failed. ${why}`;\nreturn [{ json: { ok, reply, why, bytes: built.bytes || 0, counts: built.counts || {} } }];\n"
+      },
+      "id": "ea8fb16d-d38a-5d9c-9569-c91c9dcec73f",
+      "name": "Backup result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "663dc271-45ed-5d24-a1d7-301a60328a6c",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd069481-9441-5d4f-94cb-2e2411a2ae6f",
+      "name": "Saved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1340,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into jarvis.settings (key, value) values ('backup_last_ok', to_jsonb(now()::text)) on conflict (key) do update set value = excluded.value",
+        "options": {}
+      },
+      "id": "bbdb9e36-b56b-511d-81cc-85bbc24b6e4b",
+      "name": "Mark backup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1560,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Backup problem\": a failed backup becomes an alert.\nconst r = $input.first().json || {};\nreturn [{ json: { problems: [{ key: 'backup', text: String(r.reply || 'Backup failed.').slice(0, 200) }] } }];\n"
+      },
+      "id": "e5e04c7a-6f65-5a91-ab5c-6faba8a35be1",
+      "name": "Backup problem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (select value from jarvis.settings where key = 'email_status') as email_status,\n  (select to_char(((value #>> '{}')::timestamptz) at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') from jarvis.settings where key = 'email_synced_at') as email_synced_at,\n  (select to_char(((value #>> '{}')::timestamptz) at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') from jarvis.settings where key = 'backup_last_ok') as backup_last_ok,\n  (select count(*) from jarvis.items\n     where type = 'reminder' and status = 'open' and parent_id is null and last_notified_at is null\n       and remind_at < now() - interval '90 minutes' and created_at < now() - interval '90 minutes')::int as missed_reminders",
+        "options": {}
+      },
+      "id": "71821be2-6940-565e-9265-0e3c496c7f23",
+      "name": "Load health",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        240,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Health check\": looks for things that stopped working quietly. Each problem has a key so it is only reported once per 6 hours.\nconst h = $input.first().json || {};\nconst now = Date.now();\nconst hoursSince = (s) => { const t = Date.parse(s); return Number.isFinite(t) ? (now - t) / 3600000 : null; };\nconst problems = [];\n\nconst st = h.email_status && typeof h.email_status === 'object' ? h.email_status : {};\nfor (const acct of ['personal', 'college']) {\n  if (typeof st[acct] === 'string' && st[acct]) {\n    problems.push({ key: 'email-' + acct, text: `Gmail (${acct}) cannot be read: ${st[acct].slice(0, 100)}. Reconnect it in n8n.` });\n  }\n}\nconst sync = hoursSince(h.email_synced_at);\nif (sync !== null && sync > 4) problems.push({ key: 'email-stale', text: `Email has not been checked for ${Math.round(sync)} hours.` });\n\nconst bk = hoursSince(h.backup_last_ok);\nif (bk !== null && bk > 36) problems.push({ key: 'backup-stale', text: `No successful backup for ${Math.round(bk / 24 * 10) / 10} days.` });\n\nconst missed = Number(h.missed_reminders) || 0;\nif (missed > 0) problems.push({ key: 'missed', text: `${missed} reminder${missed === 1 ? ' was' : 's were'} due over 90 minutes ago and never fired.` });\n\nreturn [{ json: { problems } }];\n"
+      },
+      "id": "e5ea36b5-631c-530b-8e02-b5276c33a50b",
+      "name": "Health check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Error to problem\": a workflow that crashed becomes an alert.\nconst e = $input.first().json || {};\nconst wf = (e.workflow && e.workflow.name) || 'A workflow';\nif (/^09\\b/.test(wf)) return [];\nconst ex = e.execution || {};\nconst err = ex.error || {};\nconst msg = String(err.message || 'unknown error').replace(/\\s+/g, ' ').slice(0, 140);\nconst where = ex.lastNodeExecuted ? ` at \"${String(ex.lastNodeExecuted).slice(0, 40)}\"` : '';\nreturn [{ json: { problems: [{ key: 'wf:' + wf, text: `${wf} failed${where}: ${msg}` }] } }];\n"
+      },
+      "id": "1faee3b1-4b72-5be8-ad4c-fbd20e9fc807",
+      "name": "Error to problem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select $1::json as problems,\n  (select value #>> '{}' from jarvis.settings where key = 'bark_key') as bark_key,\n  (select value from jarvis.settings where key = 'health_alerts') as alerts",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.problems || [])] }}"
+        }
+      },
+      "id": "e81eb90b-3f0b-5da1-8e13-d1a21e82ba6e",
+      "name": "Alert state",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1780,
+        500
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Decide\": drops problems already reported in the last 6 hours and builds one push for the rest.\nconst st = $input.first().json || {};\nconst problems = Array.isArray(st.problems) ? st.problems.filter((p) => p && typeof p.key === 'string' && typeof p.text === 'string') : [];\nconst alerts = st.alerts && typeof st.alerts === 'object' && !Array.isArray(st.alerts) ? st.alerts : {};\nconst now = Date.now();\nconst WINDOW = 6 * 3600000;\nconst fresh = problems.filter((p) => { const t = Date.parse(alerts[p.key]); return !(Number.isFinite(t) && now - t < WINDOW); });\nconst key = typeof st.bark_key === 'string' ? st.bark_key : '';\nif (!fresh.length || !key) return [{ json: { send: false, found: problems.length } }];\nconst next = {};\nfor (const k of Object.keys(alerts)) { const t = Date.parse(alerts[k]); if (Number.isFinite(t) && now - t < 3 * 86400000) next[k] = alerts[k]; }\nfor (const p of fresh) next[p.key] = new Date(now).toISOString();\nconst body = fresh.map((p) => p.text).join('\\n').slice(0, 480);\nreturn [{ json: { send: true, bark_key: key, title: fresh.length === 1 ? 'Jarvis needs attention' : `Jarvis: ${fresh.length} problems`, body, alerts_json: JSON.stringify(next), found: problems.length } }];\n"
+      },
+      "id": "99e7ff83-06f1-50a2-b109-6f122aa1b865",
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5f1a1d99-1975-593e-bf16-f02e39aac207",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8ab0c9ed-2903-5bdd-8902-928d65dd2f3d",
+      "name": "Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2220,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.day.app/push",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ device_key: $json.bark_key, title: $json.title, body: $json.body, level: 'active', group: 'Jarvis alerts' }) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "cca6b5b3-6093-5bd1-a0fa-7b7584ac0b40",
+      "name": "Bark",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2440,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9462bbb4-af3e-5fdd-a541-12a1f0e3c7cb",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "13097fd1-7308-5cf5-b88f-caacf848f0fe",
+      "name": "Bark ok?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2660,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into jarvis.settings (key, value) values ('health_alerts', $1::jsonb) on conflict (key) do update set value = excluded.value",
+        "options": {
+          "queryReplacement": "={{ [$('Decide').first().json.alerts_json] }}"
+        }
+      },
+      "id": "ca461540-921b-562f-80f4-48e3eec215f8",
+      "name": "Remember",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2880,
+        340
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node \"Reply\": the answer to the backup webhook (the scheduled runs ignore it).\nlet r = null;\ntry { r = $('Backup result').first().json; } catch (e) { r = null; }\nreturn [{ json: r ? { ok: !!r.ok, reply: String(r.reply || '') } : { ok: true, reply: 'Done.' } }];\n"
+      },
+      "id": "1bd9672c-6f8c-5d7d-8bf8-606ae31c7108",
+      "name": "Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every night": {
+      "main": [
+        [
+          {
+            "node": "Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export": {
+      "main": [
+        [
+          {
+            "node": "Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare": {
+      "main": [
+        [
+          {
+            "node": "Check repo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check repo": {
+      "main": [
+        [
+          {
+            "node": "Existing file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing file": {
+      "main": [
+        [
+          {
+            "node": "Build file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build file": {
+      "main": [
+        [
+          {
+            "node": "Save to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to GitHub": {
+      "main": [
+        [
+          {
+            "node": "Backup result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup result": {
+      "main": [
+        [
+          {
+            "node": "Saved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Saved?": {
+      "main": [
+        [
+          {
+            "node": "Mark backup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backup problem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark backup": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup problem": {
+      "main": [
+        [
+          {
+            "node": "Alert state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 6 hours": {
+      "main": [
+        [
+          {
+            "node": "Load health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load health": {
+      "main": [
+        [
+          {
+            "node": "Health check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health check": {
+      "main": [
+        [
+          {
+            "node": "Alert state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Error to problem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error to problem": {
+      "main": [
+        [
+          {
+            "node": "Alert state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert state": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send?": {
+      "main": [
+        [
+          {
+            "node": "Bark",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bark": {
+      "main": [
+        [
+          {
+            "node": "Bark ok?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bark ok?": {
+      "main": [
+        [
+          {
+            "node": "Remember",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember": {
+      "main": [
+        [
+          {
+            "node": "Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  }
+}

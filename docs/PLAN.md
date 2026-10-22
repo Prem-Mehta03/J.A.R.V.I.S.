@@ -103,13 +103,13 @@ Each milestone ends with a commit and a working demo.
 - [x] **M7: Habits and ideas (built, see docs/M7-checklist.md).** Habits with streaks, a month calendar of done days and past-day fixes; ideas as plain multi-line text, editable in the app; chat and Siri "Jarvis idea". Study tab (exam calendar with 7 PM-before and 2-hours-before alerts, college work list, important links, Siri "Jarvis study"); no separate study-hours tracker; weekly target on habits instead, the Sunday summary was dropped, M9 gets a college work summary instead. Mark fully done after the real-device test.
 - [x] **M8: Email intelligence (built, see docs/M8-checklist.md).** Both Gmail accounts every 15 minutes and on Refresh; rules, Gmail Promotions and the model sort mail into Important, Normal and Ads; Email tab with per-account lists and correction buttons; chat "any important emails" and corrections; digest only, no email pushes. Mark fully done after the real Gmail check.
 - [x] **M9: Morning briefing and calendar (built, see docs/M9-checklist.md; mark fully done after the real-device test).** Daily push combining schedule, tasks, dates, habits, weather, email digest. Also: a college work summary (all open tasks from the Study tab, in the brief and on request; replaces the Sunday summary, which is dropped), and yesterday's cleanup. The brief lists reminders from yesterday that were never marked done and asks whether to close them all; the Reminders tab already shows them under "Waiting to fire" so they can be checked first, then "close them" or "keep X" by chat. Needs a bulk-close action in `jarvis-items`.
-- [ ] **M10: Web automation.** Page watching, digests, lookups.
-- [ ] **M11: Hardening.** Scheduled database export backup, error alerts, LLM fallback, docs.
+- [x] **M10: Dropped.** Web lookup, page watching and news digests are not needed (a normal LLM or search covers them).
+- [x] **M11: Hardening (built, see docs/M11-checklist.md and docs/RECOVERY.md; mark fully done after a real restore test).** Nightly JSON backup committed to a private GitHub repository, `export_all`/`import_all` SQL functions, Bark alerts for crashed workflows and a 6-hourly health check, recovery guide. LLM fallback was checked and already exists everywhere a model is used.
 
 ## 8. Open questions
 
 1. ~~Backup alert channel~~ Decided in M3: a Google Calendar event, created only when a push fails (no Telegram).
 2. Which spaces beyond personal and college?
-3. Preferred morning briefing time? (Stored in `settings` once decided.)
+3. ~~Briefing time~~ Decided in M9: 7:00 AM, changeable by chat (`settings.brief_time`).
 4. Which habits and study subjects to start with?
 5. Does "Wake up Jarvis" open the Home Screen app or Safari? (Test at the start of M5.)
