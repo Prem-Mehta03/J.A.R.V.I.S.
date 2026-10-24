@@ -6,8 +6,8 @@ import { icon } from './icons.js';
 // "brief me", "morning brief", "what's my day" typed or spoken in chat go to the brief instead of the chat brain.
 export const BRIEF_RE = /^(?:hey |ok |okay )?(?:jarvis[, ]+)?(?:brief me|give me (?:my |the )?(?:morning |daily )?brief(?:ing)?|(?:my |the )?(?:morning |daily )?brief(?:ing)?(?: please)?|what(?:'s|s| is) my day(?: like)?|start my day)[.?! ]*$/i;
 
-export function createBrief({ el, call, setStatus, renderAll, emptyBox, speak, go }) {
-  const brief = { data: null, loading: false, tried: false, closing: false };
+export function createBrief({ el, call, setStatus, renderAll, emptyBox, speak, stop, go }) {
+  const brief = { data: null, loading: false, tried: false, closing: false, reading: false };
 
   async function load(showError) {
     if (brief.loading) return;
@@ -18,6 +18,15 @@ export function createBrief({ el, call, setStatus, renderAll, emptyBox, speak, g
     else if (showError) setStatus((r && r.reply) || 'Could not build the brief.', true);
     renderAll();
   }
+
+  // Read aloud turns into Stop while the brief is being spoken. Leaving the screen stops it too.
+  function toggleReading() {
+    if (!brief.data) return;
+    if (brief.reading) { brief.reading = false; stop(); renderAll(); return; }
+    brief.reading = true; renderAll();
+    Promise.resolve(speak(brief.data.spoken)).catch(() => {}).then(() => { if (brief.reading) { brief.reading = false; renderAll(); } });
+  }
+  function stopReading() { if (brief.reading) { brief.reading = false; stop(); } }
 
   async function closeAll() {
     if (brief.closing) return;
@@ -39,7 +48,7 @@ export function createBrief({ el, call, setStatus, renderAll, emptyBox, speak, g
     const out = [el('h1', { class: 'h1' }, b ? b.greeting : 'Brief'),
       el('p', { class: 'sub' }, b ? b.date_text : brief.loading ? 'Building your brief' : 'Could not load')];
     out.push(el('div', { class: 'briefbtns' },
-      el('button', { class: 'act primary', type: 'button', disabled: !b, onclick: () => b && speak(b.spoken) }, icon('volume', 18), 'Read aloud'),
+      el('button', { class: 'act primary', type: 'button', disabled: !b, onclick: toggleReading }, icon(brief.reading ? 'close' : 'volume', 18), brief.reading ? 'Stop' : 'Read aloud'),
       el('button', { class: 'act neutral', type: 'button', disabled: brief.loading, onclick: () => load(true) }, icon('refresh', 18), brief.loading ? 'Working…' : 'Refresh')));
     if (!b) return out;
 
@@ -85,5 +94,5 @@ export function createBrief({ el, call, setStatus, renderAll, emptyBox, speak, g
     return out;
   }
 
-  return { briefView, badge: () => (brief.data ? brief.data.stale.length : 0), invalidate: () => { brief.tried = false; brief.data = null; } };
+  return { briefView, stopReading, badge: () => (brief.data ? brief.data.stale.length : 0), invalidate: () => { brief.tried = false; brief.data = null; } };
 }

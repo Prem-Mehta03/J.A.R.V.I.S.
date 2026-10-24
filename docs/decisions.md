@@ -163,3 +163,8 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **A loop, not a bigger query.** The workflow loops over the commands one at a time (a Loop Over Items node), so each command keeps its own database call and its own reply, and the reply code picks its command by the loop's run number. A Combine node joins the replies; a single command passes through unchanged, so the app, voice and Siri did not need changes.
 - **"Done with X" forcing** (a message that starts with done or finished always closes an item) only applies when the message is one command.
 - **Not supported:** commands that depend on each other ("add a task and remind me about it"). Each command only sees what is already in the database.
+
+## Brief reading (Oct 24)
+
+- **Spoken email part names senders only** (no subjects), each sender once; the screen still lists subjects.
+- **Read aloud is a toggle:** it becomes Stop while the brief is spoken, and leaving the Brief screen stops it. Chat replies already had the same toggle on their speaker button.

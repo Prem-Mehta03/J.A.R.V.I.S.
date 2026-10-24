@@ -98,7 +98,7 @@ const life = createLife({ el, state, call, setStatus: (t, e) => setStatus(t, e),
 
 const mailv = createEmail({ el, state, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), renderSheet: () => renderSheet(), emptyBox: (a, b) => emptyBox(a, b) });
 
-const briefv = createBrief({ el, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), emptyBox: (a, b) => emptyBox(a, b), speak: (t) => readAloud(t), go: (v) => go(v) });
+const briefv = createBrief({ el, call, setStatus: (t, e) => setStatus(t, e), renderAll: () => renderAll(), emptyBox: (a, b) => emptyBox(a, b), speak: (t) => readAloud(t), stop: () => { speaker.stop(); setOrbMode('idle'); }, go: (v) => go(v) });
 
 // "Brief me" goes to the brief; everything else goes to the chat brain.
 async function chatCall(text, source) {
@@ -155,7 +155,7 @@ async function ask(text) {
 // Read a chat reply aloud (replay button).
 function readAloud(text) {
   speaker.unlock();
-  speaker.speak(text, voicePrefs(), { onStart: () => setOrbMode('speaking') }).then(() => { if (!state.busy) setOrbMode('idle'); });
+  return speaker.speak(text, voicePrefs(), { onStart: () => setOrbMode('speaking') }).then(() => { if (!state.busy) setOrbMode('idle'); });
 }
 
 function openVoiceMode(opts) {
@@ -167,6 +167,7 @@ function setStatus(text, err = false) { state.status = text; state.statusErr = e
 
 // ---------- navigation ----------
 function go(view) {
+  if (state.view === 'brief' && view !== 'brief') briefv.stopReading();
   state.view = view; state.drawer = false; state.sheet = null; state.search = '';
   renderAll(); ui.main.scrollTop = view === 'chat' ? ui.main.scrollHeight : 0;
 }
