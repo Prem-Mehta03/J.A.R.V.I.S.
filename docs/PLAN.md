@@ -88,7 +88,7 @@ jarvis/
 Each milestone ends with a commit and a working demo.
 
 - [x] **M0: Feasibility spikes (go / no-go).** Done 2026-10-20, result: go. Details in [M0-checklist.md](M0-checklist.md).
-- [ ] **M1: Repo and foundations.**
+- [x] **M1: Repo and foundations.**
   - Webhook contract and token handling: [api.md](api.md), `scripts/new-token.ps1`.
   - Migration log and settings table: `db/migrations/002_migration_log_and_settings.sql`.
   - n8n export routine with a secret scan: `scripts/export_n8n.py`.
@@ -105,6 +105,15 @@ Each milestone ends with a commit and a working demo.
 - [x] **M9: Morning briefing and calendar (built, see docs/M9-checklist.md; mark fully done after the real-device test).** Daily push combining schedule, tasks, dates, habits, weather, email digest. Also: a college work summary (all open tasks from the Study tab, in the brief and on request; replaces the Sunday summary, which is dropped), and yesterday's cleanup. The brief lists reminders from yesterday that were never marked done and asks whether to close them all; the Reminders tab already shows them under "Waiting to fire" so they can be checked first, then "close them" or "keep X" by chat. Needs a bulk-close action in `jarvis-items`.
 - [x] **M10: Dropped.** Web lookup, page watching and news digests are not needed (a normal LLM or search covers them).
 - [x] **M11: Hardening (built, see docs/M11-checklist.md and docs/RECOVERY.md; mark fully done after a real restore test).** Nightly JSON backup committed to a private GitHub repository, `export_all`/`import_all` SQL functions, Bark alerts for crashed workflows and a 6-hourly health check, recovery guide. LLM fallback was checked and already exists everywhere a model is used.
+- [x] **M12: Several commands in one message (built, see docs/M12-checklist.md).** "Remind me at 6 to call mom and mark the lab report done" runs both, in order, up to 5, with one combined reply. Chat, voice and Siri all use it.
+
+## 7b. Status (22 Oct 2026)
+
+All planned milestones are built (M10 was dropped). What remains is not building but confirming on real devices and keeping things alive:
+- Real-device checks still open: Siri "Jarvis brief" and the wake-alarm automation (M9), the morning Bark push at 7:00, a restore test of a backup on a spare Supabase project (M11), an alert push on the phone (M11).
+- Around 28 Oct: confirm the Gmail and Calendar sign-ins survived (health alerts will also say so).
+- Renew the GitHub backup token when it expires.
+- Ideas not planned: creating Google Calendar events from chat, more brief sections, per-space habits. Add them as M12+ only if wanted.
 
 ## 8. Open questions
 

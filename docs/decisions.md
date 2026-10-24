@@ -156,3 +156,10 @@ Short records of what was chosen and why. Newest at the bottom. Dates are 2026.
 - **Error alerts need the Error workflow set by hand** on each workflow in n8n (the setting stores an instance-specific id, so it cannot be shipped in the JSON).
 - **Quiet failures are caught by the health check**, because the Gmail and Calendar requests are set to continue on error (a crash would never reach the error workflow). Workflow 07 now stores which Gmail account failed (`email_status`).
 - **LLM fallback needed no work:** router and email sorting already use Gemini then Groq; nothing else calls a model.
+
+## Several commands per message (M12)
+
+- **The model splits, the code runs each command separately.** The router prompt may answer `{"commands": [...]}` (max 5); every command goes through the same validation and fixed SQL as a single command. Nothing new reaches the database.
+- **A loop, not a bigger query.** The workflow loops over the commands one at a time (a Loop Over Items node), so each command keeps its own database call and its own reply, and the reply code picks its command by the loop's run number. A Combine node joins the replies; a single command passes through unchanged, so the app, voice and Siri did not need changes.
+- **"Done with X" forcing** (a message that starts with done or finished always closes an item) only applies when the message is one command.
+- **Not supported:** commands that depend on each other ("add a task and remind me about it"). Each command only sees what is already in the database.

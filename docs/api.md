@@ -150,3 +150,7 @@ Chat intents: `college.summary`, `cleanup.close` (optional keep words: "close th
 `POST /webhook/jarvis-backup` (token header) runs the backup now and answers `{ok, reply}`; for example `Backup saved to GitHub (10 KB, 34 rows).` Failures answer `ok: false` with the reason and send a Bark alert. The same workflow also runs nightly at 3:15 AM, a health check every 6 hours, and is the n8n **Error workflow** for the others.
 
 SQL: `jarvis.export_all()` returns every table (except stored email, schema log and the Bark key) as one JSON document; `jarvis.import_all(json)` restores it (existing rows kept, settings overwritten).
+
+## Several commands in one message (M12)
+
+`POST /webhook/jarvis` answers one command exactly as before. If the message holds several commands (up to 5, run in the order said), the answer is `{ok, partial, intent: "multi", provider, reply, results: [{intent, ok, reply}]}`. `reply` is every reply joined in order, `ok` is true if at least one command worked, and `partial` is true when some worked and some did not. Each command is checked on its own, so a bad one never stops the others.
